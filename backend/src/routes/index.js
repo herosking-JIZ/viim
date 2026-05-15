@@ -23,6 +23,8 @@ const zoneRoutes = require('./zoneTarifaireRoute');
 const categorieRoutes = require('./categorieVehiculeRoute');
 const tarifRoutes = require('./tarifCategorieZoneRoute');
 
+const { dualAuthenticate } = require('../middlewares/dualAuth');
+
 
 
 console.log('Chargement des routes...');
@@ -30,6 +32,10 @@ console.log('Chargement des routes...');
 const router = express.Router();
 
 router.use('/auth', authRoute);
+
+// Appliquer l'authentification dual à toutes les autres routes
+router.use(dualAuthenticate);
+
 router.use('/trajets', trajetRoute);
 router.use('/vehicules', vehiculeRoute);
 router.use('/chauffeurs', chauffeurRoute);

@@ -29,7 +29,9 @@ const authenticate = async (req, res, next) => {
     const user = await prisma.utilisateur.findUnique({
       where: { id_utilisateur: decoded.sub },
       include: {
-        utilisateur_role: { where: { actif: true } }
+        utilisateur_role: { where: { actif: true } },
+        gestionnaire:        { select: { id_parking: true } },
+
       }
     });
 
@@ -46,7 +48,12 @@ const authenticate = async (req, res, next) => {
 
     // 4. Attacher l'utilisateur à la requête
     const { mot_de_passe_hash, reset_token, reset_token_expire, ...userSafe } = user;
-    req.user = userSafe;
+    req.user = { 
+      ...userSafe ,
+      parking_id : user.gestionnaire?.id_parking ?? null
+
+
+    };
 
     next(); // ✅ passer au controller
 

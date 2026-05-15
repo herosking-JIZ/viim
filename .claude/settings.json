@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Kader SAWADOGO\\\\Desktop\\\\ndjigiv1\" -Recurse -Depth 2)",
+      "Bash(Select-Object FullName)",
+      "Bash(docker-compose exec *)",
+      "Bash(cd \"c:\\\\\\\\Users\\\\\\\\Kader SAWADOGO\\\\\\\\Desktop\\\\\\\\ndjigiv1\")",
+      "Bash(bash setup-keycloak-auto.sh)"
+    ]
+  }
+}

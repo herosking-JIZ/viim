@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { MapPin, AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { MapPin, AlertCircle, Eye, EyeOff, Loader2, LogIn } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 export default function Login() {
-  const { login } = useAuth()
+  const { login, loginWithKeycloak } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -112,6 +112,23 @@ export default function Login() {
               {loading ? 'Connexion...' : 'Se connecter'}
             </button>
           </form>
+
+          {/* Keycloak Auth */}
+          <div className="mt-6 space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="flex-1 border-t border-border" />
+              <span className="text-xs text-muted-foreground">Ou</span>
+              <div className="flex-1 border-t border-border" />
+            </div>
+            <button
+              type="button"
+              onClick={loginWithKeycloak}
+              className="w-full rounded-xl border border-input bg-background text-foreground font-semibold py-2.5 text-sm flex items-center justify-center gap-2 hover:bg-accent transition-colors"
+            >
+              <LogIn className="h-4 w-4" />
+              Se connecter avec Keycloak
+            </button>
+          </div>
         </div>
       </div>
     </div>

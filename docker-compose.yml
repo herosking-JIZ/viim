@@ -1,0 +1,114 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: ndjigi-postgres
+    environment:
+      POSTGRES_USER: ndjigi_user
+      POSTGRES_PASSWORD: "1234567890"
+      POSTGRES_DB: ndjigi_db
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ndjigi-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ndjigi_user -d ndjigi_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Keycloak Identity Provider
+  keycloak:
+    image: keycloak/keycloak:latest
+    container_name: ndjigi-keycloak
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: NDJIGI@2026
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/ndjigi_db
+      KC_DB_USERNAME: ndjigi_user
+      KC_DB_PASSWORD: "1234567890"
+      KC_HOSTNAME_STRICT: false
+      KC_PROXY_HEADERS: xforwarded
+      KC_HTTP_ENABLED: true
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ndjigi-network
+    command:
+      - start-dev
+    restart: unless-stopped
+
+  # Backend Node.js/Express
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ndjigi-backend
+    environment:
+      NODE_ENV: development
+      PORT: 8000
+      DATABASE_URL: "postgresql://ndjigi_user:1234567890@postgres:5432/ndjigi_db"
+
+      # Keycloak Configuration
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ndjigi
+      KEYCLOAK_CLIENT_ID: ndjigi-backend
+      KEYCLOAK_CLIENT_SECRET: G86nsu5BwsbS5no2HB76HWuTmprCorte
+
+      # JWT Configuration (rétrocompatibilité)
+      JWT_SECRET: change_this_secret_key
+      JWT_REFRESH_SECRET: change_this_refresh_secret
+      JWT_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+
+      # CORS
+      CORS_ORIGIN: http://localhost:3000,http://localhost:8081,http://web:3000
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    networks:
+      - ndjigi-network
+    command: npm run dev
+    restart: unless-stopped
+
+  # Web Frontend (React + Vite)
+  web:
+    build:
+      context: ./web/n-djigi
+      dockerfile: Dockerfile
+    container_name: ndjigi-web
+    environment:
+      VITE_API_URL: http://localhost:8000/api/v1
+      VITE_KEYCLOAK_URL: http://localhost:8080
+      VITE_KEYCLOAK_REALM: ndjigi
+      VITE_KEYCLOAK_CLIENT_ID: ndjigi-web
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - ndjigi-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  ndjigi-network:
+    driver: bridge
