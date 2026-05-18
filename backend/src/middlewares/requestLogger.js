@@ -13,7 +13,7 @@ const requestLogger = (req, res, next) => {
   console.log(`   IP: ${ip}`);
   console.log(`   Body:`, JSON.stringify(req.body, null, 2));
   if (req.headers.authorization) {
-    console.log(`   Auth: Bearer ${req.headers.authorization.substring(0, 50)}...`);
+    console.log(`   Auth: ${req.headers.authorization.substring(0, 50)}...`);
   }
 
   // Intercepter la réponse

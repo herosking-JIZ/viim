@@ -92,7 +92,7 @@ export default function Dashboard() {
       {/* Charts row 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-card border border-border rounded-2xl p-5">
-          <h3 className="font-display font-semibold mb-4">Courses par jour</h3>
+          <h3 className="font-display font-semibold mb-4">Courses par semaine</h3>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={coursesSemaine} barSize={28}>
               <XAxis dataKey="label" tick={CHART_STYLE} axisLine={false} tickLine={false} />

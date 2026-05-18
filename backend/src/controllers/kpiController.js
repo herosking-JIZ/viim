@@ -19,7 +19,7 @@ const dashboardController = {
 
             return res.status(200).json({
                 success: true,
-                message : " doonnes envi-]] ",
+                message: "Indicateurs clés de performance du jour",
                 data: {
                     total_utilisateurs: totalUsers,
                     courses_aujourd_hui: coursesToday,
@@ -105,16 +105,17 @@ const dashboardController = {
             endOfWeek.setDate(startOfWeek.getDate() + 6);
             endOfWeek.setHours(23, 59, 59, 999);
 
-            // 2. Requête Prisma : group by jour de la semaine sur les trajets terminés dans la semaine
+            // 2. Requête Prisma : group by jour de la semaine sur les trajets créés dans la semaine
             // On utilise $queryRaw pour extraire le jour de la semaine (ISO : lundi=1, dimanche=7)
+            // Aligné avec getKpis() et getEvolutionMensuelle() : cohérence par date_heure_debut
             const results = await prisma.$queryRaw`
                 SELECT
-                    EXTRACT(ISODOW FROM "date_heure_fin") AS day_of_week,
+                    EXTRACT(ISODOW FROM "date_heure_debut") AS day_of_week,
                     COUNT(*)::int AS count
                 FROM "trajet"
-                WHERE "date_heure_fin" >= ${startOfWeek}
-                AND "date_heure_fin" <= ${endOfWeek}
-                AND "statut" = 'termine' 
+                WHERE "date_heure_debut" >= ${startOfWeek}
+                AND "date_heure_debut" <= ${endOfWeek}
+                AND "statut" = 'termine'
                 GROUP BY day_of_week
                 ORDER BY day_of_week`;
 
@@ -140,9 +141,6 @@ const dashboardController = {
             });
 
                 // 4. Réponse standardisée
-            console.log("-----------------------------------------------course hebdomadaire envoyer------------------------");
-
-            console.log(weeklyData);
             return res.status(200).json({
                 success: true,
                 message: `Statistiques de la semaine du ${startOfWeek.toLocaleDateString('fr-FR')} au ${endOfWeek.toLocaleDateString('fr-FR')}`,
@@ -162,7 +160,6 @@ const dashboardController = {
 },
 
     // GET /api/v1/dashboard/moyens-paiement
-  // GET /api/v1/dashboard/moyens-paiement
 async getPaymentMethodsStats(req, res) {
     try {
         const startOfDay = new Date();
@@ -171,50 +168,54 @@ async getPaymentMethodsStats(req, res) {
         const endOfDay = new Date();
         endOfDay.setHours(23, 59, 59, 999);
 
-        // 1. Définir le dictionnaire de correspondance (facile à modifier ou étendre)
+        // Dictionnaire pour regrouper les types similaires
         const METHOD_LABELS = {
-            'ORANGE_MONEY': 'Mobile Money',
-            'WAVE':         'Mobile Money',
-            'MOOV_MONEY':   'Mobile Money',
-            'ESPECES':      'Espèces',
-            'CARTE_VISA':   'Carte Visa',
-            // Tout nouveau moyen ajouté en DB sera géré par le fallback plus bas
+            'CARTE_BANCAIRE': 'Carte Bancaire',
+            'MOBILE_MONEY': 'Mobile Money',
+            'PORTEFEUILLE': 'Portefeuille',
         };
 
-        // 2. Agrégation Prisma
-        const stats = await prisma.paiement.groupBy({
-            by: ['methode'],
-            where: {
-                date_paiement: { gte: startOfDay, lte: endOfDay },
-                statut: 'complete'
-            },
-            _count: { methode: true },
-        });
+        // Requête optimisée : agrégation SQL avec jointure vers moyens_paiement (1 requête au lieu de N+1)
+        const stats = await prisma.$queryRaw`
+            SELECT
+                mp.type,
+                COUNT(p.id_paiement)::int AS count
+            FROM "paiement" p
+            INNER JOIN "moyens_paiement" mp ON p.id_moyen_paiement = mp.id_moyen_paiement
+            WHERE p.date_paiement >= ${startOfDay}
+                AND p.date_paiement <= ${endOfDay}
+                AND p.statut = 'complete'
+            GROUP BY mp.type
+        `;
 
-        // 3. Transformation dynamique
-        const dataMap = {};
+        // Calculer le total des paiements
+        const total = stats.reduce((sum, item) => sum + item.count, 0);
 
+        // Cas limite : aucun paiement ce jour → retourner tableau vide
+        if (total === 0) {
+            return res.status(200).json({
+                success: true,
+                data: [],
+                message: "Aucun paiement complété aujourd'hui",
+                errors: null
+            });
+        }
+
+        // Regrouper par label et compter (avant calcul des %)
+        const groupedCounts = {};
         stats.forEach(item => {
-            // On récupère le nom propre via le dictionnaire, 
-            // sinon on transforme le code brute (ex: "MA_NOUVELLE_METHODE" -> "Ma Nouvelle Methode")
-            const name = METHOD_LABELS[item.methode] || 
-                         item.methode.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-            
-            const count = item._count.methode;
-
-            // On cumule les valeurs (utile si Orange Money et Wave pointent tous deux vers "Mobile Money")
-            if (dataMap[name]) {
-                dataMap[name] += count;
-            } else {
-                dataMap[name] = count;
-            }
+            const label = METHOD_LABELS[item.type] || 'Autre';
+            groupedCounts[label] = (groupedCounts[label] || 0) + item.count;
         });
 
-        // 4. Conversion de l'objet en tableau pour le format final
-        const formattedData = Object.keys(dataMap).map(name => ({
-            name: name,
-            value: dataMap[name]
-        }));
+        // Calculer les pourcentages pour chaque groupe, filtrer les zéros, puis trier décroissant
+        const formattedData = Object.entries(groupedCounts)
+            .map(([name, count]) => ({
+                name,
+                value: Math.round((count / total) * 100)
+            }))
+            .filter(item => item.value > 0)
+            .sort((a, b) => b.value - a.value);
 
         return res.status(200).json({
             success: true,
@@ -224,6 +225,7 @@ async getPaymentMethodsStats(req, res) {
         });
 
     } catch (err) {
+        console.error('❌ Erreur getPaymentMethodsStats:', err);
         return res.status(500).json({
             success: false,
             message: err.message,
@@ -235,51 +237,51 @@ async getPaymentMethodsStats(req, res) {
     // GET /api/v1/dashboard/evolution-mensuelle
 async getEvolutionMensuelle(req, res) {
   try {
-    // 7 derniers mois
-    const mois = []
-    const now = new Date()
+    // Construire les 7 derniers mois
+    const mois = [];
+    const now = new Date();
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       mois.push({
         debut: new Date(d.getFullYear(), d.getMonth(), 1),
-        fin:   new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59),
+        fin: new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59),
         label: d.toLocaleDateString('fr-FR', { month: 'short' }),
-      })
+      });
     }
 
-    const counts = await Promise.all(
-      mois.map(({ debut, fin }) =>
-        prisma.trajet.count({
-          where: {
-            statut: 'termine',
-            date_heure_debut: { gte: debut, lte: fin },
-          },
-        })
-      )
-    )
+    // Une seule requête SQL avec 7 COUNT(*) FILTER en parallèle (vs 7 requêtes séparées)
+    // Cast en INT pour éviter les BigInt (qui ne sont pas sérialisables en JSON)
+    const result = await prisma.$queryRaw`
+      SELECT
+        COUNT(*) FILTER (WHERE date_heure_debut >= ${mois[0].debut} AND date_heure_debut <= ${mois[0].fin})::int AS count_0,
+        COUNT(*) FILTER (WHERE date_heure_debut >= ${mois[1].debut} AND date_heure_debut <= ${mois[1].fin})::int AS count_1,
+        COUNT(*) FILTER (WHERE date_heure_debut >= ${mois[2].debut} AND date_heure_debut <= ${mois[2].fin})::int AS count_2,
+        COUNT(*) FILTER (WHERE date_heure_debut >= ${mois[3].debut} AND date_heure_debut <= ${mois[3].fin})::int AS count_3,
+        COUNT(*) FILTER (WHERE date_heure_debut >= ${mois[4].debut} AND date_heure_debut <= ${mois[4].fin})::int AS count_4,
+        COUNT(*) FILTER (WHERE date_heure_debut >= ${mois[5].debut} AND date_heure_debut <= ${mois[5].fin})::int AS count_5,
+        COUNT(*) FILTER (WHERE date_heure_debut >= ${mois[6].debut} AND date_heure_debut <= ${mois[6].fin})::int AS count_6
+      FROM "trajet"
+      WHERE statut = 'termine'
+    `;
 
     const dataq = mois.map(({ label }, i) => ({
-      label: label.charAt(0).toUpperCase() + label.slice(1, 3), // "Oct", "Nov"…
-      value: counts[i],
-    }))
+      label: label.charAt(0).toUpperCase() + label.slice(1, 3),
+      value: result[0][`count_${i}`],
+    }));
 
-    return res.status(200).json(
-        { 
-            success: true, 
-            data: dataq,
-            message:"evolution mensuelle",
-            errors: null
-        }
-    )
+    return res.status(200).json({
+      success: true,
+      data: dataq,
+      message: "evolution mensuelle",
+      errors: null
+    });
   } catch (err) {
-    return res.status(500).json(
-        { 
-            success: false, 
-            message: err.message,
-            errors : null,
-            data : null
-        }
-    )
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+      errors: null,
+      data: null
+    });
   }
 }
 };

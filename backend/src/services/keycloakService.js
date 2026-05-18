@@ -9,13 +9,13 @@
  */
 
 const axios = require('axios');
+const { URLSearchParams } = require('url');
 const { KEYCLOAK_URL, KEYCLOAK_REALM, KEYCLOAK_CLIENT_ID } = require('../config/keycloak');
 const KEYCLOAK_CLIENT_SECRET = process.env.KEYCLOAK_CLIENT_SECRET || '';
 
 const keycloakClient = axios.create({
   baseURL: `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect`,
-  timeout: 5000,
-  headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  timeout: 5000
 });
 
 /**
@@ -26,14 +26,23 @@ const keycloakClient = axios.create({
  */
 async function login(email, password) {
   try {
-    const response = await keycloakClient.post('/token', {
-      grant_type: 'password',
-      client_id: KEYCLOAK_CLIENT_ID,
-      client_secret: KEYCLOAK_CLIENT_SECRET,
-      username: email,
-      password: password,
-      scope: 'openid profile email'
-    });
+    const auth = Buffer.from(`${KEYCLOAK_CLIENT_ID}:${KEYCLOAK_CLIENT_SECRET}`).toString('base64');
+
+    const params = new URLSearchParams();
+    params.append('grant_type', 'password');
+    params.append('username', email);
+    params.append('password', password);
+    params.append('scope', 'openid profile email');
+
+    const response = await keycloakClient.post('/token',
+      params,
+      {
+        headers: {
+          'Authorization': `Basic ${auth}`,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      }
+    );
 
     return response.data;
   } catch (error) {
@@ -53,13 +62,22 @@ async function login(email, password) {
  */
 async function refresh(refresh_token) {
   try {
-    const response = await keycloakClient.post('/token', {
-      grant_type: 'refresh_token',
-      client_id: KEYCLOAK_CLIENT_ID,
-      client_secret: KEYCLOAK_CLIENT_SECRET,
-      refresh_token: refresh_token,
-      scope: 'openid profile email'
-    });
+    const auth = Buffer.from(`${KEYCLOAK_CLIENT_ID}:${KEYCLOAK_CLIENT_SECRET}`).toString('base64');
+
+    const params = new URLSearchParams();
+    params.append('grant_type', 'refresh_token');
+    params.append('refresh_token', refresh_token);
+    params.append('scope', 'openid profile email');
+
+    const response = await keycloakClient.post('/token',
+      params,
+      {
+        headers: {
+          'Authorization': `Basic ${auth}`,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      }
+    );
 
     return response.data;
   } catch (error) {

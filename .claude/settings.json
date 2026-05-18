@@ -5,7 +5,15 @@
       "Bash(Select-Object FullName)",
       "Bash(docker-compose exec *)",
       "Bash(cd \"c:\\\\\\\\Users\\\\\\\\Kader SAWADOGO\\\\\\\\Desktop\\\\\\\\ndjigiv1\")",
-      "Bash(bash setup-keycloak-auto.sh)"
+      "Bash(bash setup-keycloak-auto.sh)",
+      "Bash(curl -s http://localhost:8080/auth/admin -w \"\\\\nStatus: %{http_code}\\\\n\")",
+      "Bash(curl -s -X POST http://localhost:8080/realms/master/protocol/openid-connect/token -H 'Content-Type: application/x-www-form-urlencoded' -d 'client_id=admin-cli&username=admin&password=Admin123456&grant_type=password')",
+      "Bash(jq .access_token -r)",
+      "Bash(docker restart *)",
+      "Bash(docker-compose down *)",
+      "Bash(docker volume *)",
+      "PowerShell(docker restart ndjigi-backend)",
+      "Bash(bash /tmp/setup_keycloak.sh)"
     ]
   }
 }

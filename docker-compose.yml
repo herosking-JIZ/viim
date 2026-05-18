@@ -62,7 +62,7 @@ services:
       KEYCLOAK_URL: http://keycloak:8080
       KEYCLOAK_REALM: ndjigi
       KEYCLOAK_CLIENT_ID: ndjigi-backend
-      KEYCLOAK_CLIENT_SECRET: q0SSD0S6HFdjgTeP7mhvIjqaNAH2gmgC
+      KEYCLOAK_CLIENT_SECRET: W4HZH0Wf8TnGUjv6E2XMOrAl2hlXTzlM
 
       # JWT Configuration (rétrocompatibilité)
       JWT_SECRET: change_this_secret_key

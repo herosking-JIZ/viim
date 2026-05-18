@@ -4,7 +4,8 @@
 
 const jwt = require('jsonwebtoken');
 const { prisma } = require('../config/db');
-const { redis } = require('../config/redis');
+const { getRedisClient } = require('../config/redis');
+const redis = getRedisClient();
 
 /**
  * Middleware d'authentification Keycloak
@@ -22,7 +23,10 @@ const authenticateKeycloak = async (req, res, next) => {
       });
     }
 
-    const token = authHeader.split(' ')[1];
+    // Handle double "Bearer Bearer" prefix from frontend
+    let token = authHeader.replace('Bearer ', '').trim();
+    // Remove any additional "Bearer " prefix if present
+    token = token.replace(/^Bearer\s+/i, '').trim();
 
     // 2. Décoder le token (sans vérifier la signature car Keycloak l'a déjà fait)
     const decoded = jwt.decode(token, { complete: true });
@@ -57,38 +61,51 @@ const authenticateKeycloak = async (req, res, next) => {
       });
     }
 
-    // 5. Chercher ou créer l'utilisateur en base de données
-    let user = await prisma.utilisateur.findUnique({
-      where: { keycloak_id: payload.sub },
-      include: {
-        utilisateur_role: { where: { actif: true } }
-      }
-    });
+    // 5. Chercher ou créer l'utilisateur en base de données (avec cache Redis)
+    const cacheKey = `auth:user:${payload.sub}`;
+    let user = null;
 
-    // Si l'utilisateur n'existe pas, le créer
-    if (!user) {
-      console.log(`✅ Création d'un nouvel utilisateur depuis Keycloak: ${payload.email}`);
-
-      user = await prisma.utilisateur.create({
-        data: {
-          keycloak_id: payload.sub,
-          email: payload.email,
-          prenom: payload.given_name || '',
-          nom: payload.family_name || '',
-          numero_telephone: null,
-          mot_de_passe_hash: 'KEYCLOAK_AUTH',
-          auth_provider: 'keycloak',
-          utilisateur_role: {
-            create: {
-              role: 'passager',
-              actif: true
-            }
-          }
-        },
+    // Essayer de récupérer du cache Redis (TTL 60s)
+    const cachedUser = await redis.get(cacheKey);
+    if (cachedUser) {
+      user = JSON.parse(cachedUser);
+    } else {
+      // Pas en cache → requête BD
+      user = await prisma.utilisateur.findUnique({
+        where: { keycloak_id: payload.sub },
         include: {
           utilisateur_role: { where: { actif: true } }
         }
       });
+
+      // Si l'utilisateur n'existe pas, le créer
+      if (!user) {
+        console.log(`✅ Création d'un nouvel utilisateur depuis Keycloak: ${payload.email}`);
+
+        user = await prisma.utilisateur.create({
+          data: {
+            keycloak_id: payload.sub,
+            email: payload.email,
+            prenom: payload.given_name || '',
+            nom: payload.family_name || '',
+            numero_telephone: null,
+            mot_de_passe_hash: 'KEYCLOAK_AUTH',
+            auth_provider: 'keycloak',
+            utilisateur_role: {
+              create: {
+                role: 'passager',
+                actif: true
+              }
+            }
+          },
+          include: {
+            utilisateur_role: { where: { actif: true } }
+          }
+        });
+      }
+
+      // Mettre en cache avec TTL 60 secondes
+      await redis.setex(cacheKey, 60, JSON.stringify(user));
     }
 
     // 6. Vérifier si l'utilisateur est bloqué
