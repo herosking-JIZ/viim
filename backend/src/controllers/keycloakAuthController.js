@@ -132,12 +132,19 @@ const KeycloakAuthController = {
       } else if (user.utilisateur_role && user.utilisateur_role.length > 0) {
         // User exists: sync role if Keycloak role was found
         if (keycloakRoles.length > 0 && user.utilisateur_role[0].role !== localRole) {
-          // Update role to match Keycloak
-          await prisma.utilisateur_role.update({
-            where: { id_utilisateur: user.id_utilisateur },
-            data: { role: localRole }
-          });
-          user.utilisateur_role[0].role = localRole;
+          // Delete old role and create new one (role is part of composite key)
+          await prisma.$transaction([
+            prisma.utilisateur_role.deleteMany({
+              where: { id_utilisateur: user.id_utilisateur }
+            }),
+            prisma.utilisateur_role.create({
+              data: {
+                id_utilisateur: user.id_utilisateur,
+                role: localRole,
+                actif: true
+              }
+            })
+          ]);
           console.log(`✅ Synchronized role for user ${keycloak_id}: ${localRole}`);
         }
       }
