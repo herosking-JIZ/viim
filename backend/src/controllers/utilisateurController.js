@@ -627,6 +627,171 @@ const UtilisateurController = {
       });
     }
   },
+
+  // ──────────────────────────────────────────────────────────
+  // POST /api/utilisateurs
+  // Créer un nouvel utilisateur (IT/Admin seulement)
+  // IT: peut créer passager, chauffeur, proprietaire
+  // Admin: peut créer gestionnaire + les rôles finaux
+  // ──────────────────────────────────────────────────────────
+  async create(req, res) {
+    try {
+      const { email, nom, prenom, role, numero_telephone, mot_de_passe } = req.body;
+      const creatorRoles = req.user.utilisateur_role.map(r => r.role);
+
+      // Validation des champs obligatoires
+      if (!email || !nom || !prenom || !role || !numero_telephone) {
+        return res.status(400).json({
+          success: false,
+          message: 'Champs obligatoires manquants: email, nom, prenom, role, numero_telephone.',
+          data: null,
+          errors: { code: 'MISSING_FIELDS' }
+        });
+      }
+
+      const rolesValides = ['passager', 'chauffeur', 'proprietaire', 'gestionnaire', 'admin'];
+      if (!rolesValides.includes(role)) {
+        return res.status(400).json({
+          success: false,
+          message: `Rôle invalide. Rôles acceptés: ${rolesValides.join(', ')}.`,
+          data: null,
+          errors: { code: 'INVALID_ROLE', acceptedValues: rolesValides }
+        });
+      }
+
+      // Vérifier les permissions basées sur le rôle du créateur et le rôle à créer
+      const canCreateRole = (creatorRole, targetRole) => {
+        if (creatorRole === 'admin') {
+          return true; // Admin peut créer n'importe quel rôle
+        }
+        if (creatorRole === 'it') {
+          return ['passager', 'chauffeur', 'proprietaire'].includes(targetRole);
+        }
+        return false;
+      };
+
+      const hasPermission = creatorRoles.some(cr => canCreateRole(cr, role));
+      if (!hasPermission) {
+        return res.status(403).json({
+          success: false,
+          message: `Vous n'avez pas la permission de créer un compte avec le rôle "${role}".`,
+          data: null,
+          errors: { code: 'FORBIDDEN', role }
+        });
+      }
+
+      // Vérifier que l'email n'existe pas déjà
+      const existingEmail = await prisma.utilisateur.findUnique({
+        where: { email }
+      });
+      if (existingEmail) {
+        return res.status(409).json({
+          success: false,
+          message: 'Un compte avec cet email existe déjà.',
+          data: null,
+          errors: { field: 'email', code: 'DUPLICATE_EMAIL' }
+        });
+      }
+
+      // Vérifier que le numéro de téléphone n'existe pas déjà
+      const existingPhone = await prisma.utilisateur.findUnique({
+        where: { numero_telephone }
+      });
+      if (existingPhone) {
+        return res.status(409).json({
+          success: false,
+          message: 'Ce numéro de téléphone est déjà utilisé.',
+          data: null,
+          errors: { field: 'numero_telephone', code: 'DUPLICATE_PHONE' }
+        });
+      }
+
+      // Hash du mot de passe s'il est fourni, sinon générer un mot de passe temporaire
+      let mot_de_passe_hash = '';
+      if (mot_de_passe) {
+        mot_de_passe_hash = await bcrypt.hash(mot_de_passe, 12);
+      }
+
+      // Créer l'utilisateur en base de données
+      const newUser = await prisma.$transaction(async (tx) => {
+        const user = await tx.utilisateur.create({
+          data: {
+            email,
+            nom,
+            prenom,
+            numero_telephone,
+            mot_de_passe_hash,
+            auth_provider: 'local',
+            statut_compte: 'actif',
+            utilisateur_role: {
+              create: {
+                role,
+                actif: true
+              }
+            }
+          },
+          include: {
+            utilisateur_role: { where: { actif: true } }
+          }
+        });
+
+        // Créer les enregistrements associés au rôle
+        if (role === 'passager') {
+          await tx.passager.create({
+            data: { id_passager: user.id_utilisateur }
+          });
+        }
+        if (role === 'chauffeur') {
+          await tx.chauffeur.create({
+            data: {
+              id_chauffeur: user.id_utilisateur,
+              type_service: 'vtc',
+              statut_validation: 'en_attente'
+            }
+          });
+        }
+        if (role === 'proprietaire') {
+          await tx.proprietaire.create({
+            data: { id_proprietaire: user.id_utilisateur }
+          });
+        }
+
+        // Créer le portefeuille
+        await tx.portefeuille.create({
+          data: { id_utilisateur: user.id_utilisateur }
+        });
+
+        return user;
+      });
+
+      // Log de création
+      console.log(`✅ User created: ${newUser.id_utilisateur}, role: ${role}, by: ${req.user.id_utilisateur}`);
+
+      return res.status(201).json({
+        success: true,
+        message: `Utilisateur créé avec succès avec le rôle "${role}".`,
+        data: {
+          id_utilisateur: newUser.id_utilisateur,
+          email: newUser.email,
+          nom: newUser.nom,
+          prenom: newUser.prenom,
+          numero_telephone: newUser.numero_telephone,
+          role: role,
+          statut_compte: newUser.statut_compte,
+          date_inscription: newUser.date_inscription
+        },
+        errors: null
+      });
+    } catch (error) {
+      console.error('[utilisateur.create]', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur serveur lors de la création de l\'utilisateur.',
+        data: null,
+        errors: error.message
+      });
+    }
+  },
 };
 
 module.exports = UtilisateurController;

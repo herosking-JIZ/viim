@@ -71,13 +71,37 @@ const KeycloakAuthController = {
       console.log(`👤 User: ${keycloak_id}, Roles: ${keycloakRoles.join(', ') || 'none'}`);
       console.log(`📋 All realm_access.roles:`, realm_access?.roles || []);
 
-      // 3️⃣ Récupérer ou créer l'utilisateur en BDD locale
+      // 3️⃣ Map Keycloak roles to local role
+      // Map from Keycloak role names to local DB role names
+      const roleMapping = {
+        'ndjigi-admin': 'admin',
+        'gestionnaire': 'gestionnaire',
+        'passager': 'passager',
+        'chauffeur': 'chauffeur',
+        'proprietaire': 'proprietaire',
+        'ndjigi-passager': 'passager',
+        'ndjigi-chauffeur': 'chauffeur',
+        'ndjigi-proprietaire': 'proprietaire'
+      };
+
+      let localRole = 'passager'; // Default role
+      if (keycloakRoles.length > 0) {
+        // Use the first role that we have a mapping for
+        for (const kcRole of keycloakRoles) {
+          if (roleMapping[kcRole]) {
+            localRole = roleMapping[kcRole];
+            break;
+          }
+        }
+      }
+
+      // Récupérer ou créer l'utilisateur en BDD locale
       let user = await prisma.utilisateur.findUnique({
         where: { keycloak_id }
       });
 
       if (!user) {
-        // Auto-provisioning
+        // Auto-provisioning with synchronized role
         user = await prisma.utilisateur.create({
           data: {
             keycloak_id,
@@ -89,7 +113,7 @@ const KeycloakAuthController = {
             auth_provider: 'keycloak',
             utilisateur_role: {
               create: {
-                role: 'passager',
+                role: localRole,
                 actif: true
               }
             }
@@ -99,13 +123,41 @@ const KeycloakAuthController = {
           }
         });
 
-        console.log(`✅ Auto-provisioning user during login: ${keycloak_id}`);
+        console.log(`✅ Auto-provisioning user during login: ${keycloak_id}, role: ${localRole}`);
+      } else if (user.utilisateur_role && user.utilisateur_role.length > 0) {
+        // User exists: sync role if Keycloak role was found
+        if (keycloakRoles.length > 0 && user.utilisateur_role[0].role !== localRole) {
+          // Update role to match Keycloak
+          await prisma.utilisateur_role.update({
+            where: { id_utilisateur: user.id_utilisateur },
+            data: { role: localRole }
+          });
+          user.utilisateur_role[0].role = localRole;
+          console.log(`✅ Synchronized role for user ${keycloak_id}: ${localRole}`);
+        }
       }
 
+      // Reload user to ensure we have the latest role
+      user = await prisma.utilisateur.findUnique({
+        where: { keycloak_id },
+        include: { utilisateur_role: { where: { actif: true } } }
+      });
+
       // 4️⃣ Vérifier les rôles et déterminer si 2FA requis
-      // Utiliser les rôles de Keycloak (source de vérité) au lieu de la BDD locale
-      const roles = keycloakRoles.length > 0 ? keycloakRoles : (user.utilisateur_role || []).map((ur) => ur.role);
-      const requires2FA = keycloakRoles.includes('admin') || keycloakRoles.includes('ndjigi-admin') || keycloakRoles.includes('gestionnaire');
+      // Utiliser les rôles locaux (synced from Keycloak)
+      const localRoles = (user.utilisateur_role || []).map((ur) => ur.role);
+      const requires2FA = localRole === 'admin' || localRole === 'gestionnaire';
+
+      // Check if user's role is mobile-only (web access not allowed)
+      const mobileOnlyRoles = ['passager', 'chauffeur', 'proprietaire'];
+      if (mobileOnlyRoles.includes(localRole)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Accès web non disponible pour ce rôle. Utilisez l\'application mobile.',
+          code: 'MOBILE_ONLY_ROLE',
+          data: null
+        });
+      }
 
       // ─── Si 2FA requis : ne pas retourner les tokens, générer login_token ───
       if (requires2FA) {
@@ -167,7 +219,7 @@ const KeycloakAuthController = {
             prenom: user.prenom,
             numero_telephone: user.numero_telephone,
             photo_profil: user.photo_profil,
-            roles: keycloakRoles.length > 0 ? keycloakRoles : ['passager'],
+            roles: localRoles.length > 0 ? localRoles : ['passager'],
             auth_provider: 'keycloak'
           }
         }
@@ -367,7 +419,20 @@ const KeycloakAuthController = {
         include: { utilisateur_role: { where: { actif: true } } }
       });
 
+      // Use synchronized local roles (which were synced from Keycloak)
       const roles = (user.utilisateur_role || []).map((ur) => ur.role);
+      const userLocalRole = roles.length > 0 ? roles[0] : 'passager';
+
+      // Check if user's role is mobile-only
+      const mobileOnlyRoles = ['passager', 'chauffeur', 'proprietaire'];
+      if (mobileOnlyRoles.includes(userLocalRole)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Accès web non disponible pour ce rôle. Utilisez l\'application mobile.',
+          code: 'MOBILE_ONLY_ROLE',
+          data: null
+        });
+      }
 
       res.json({
         success: true,

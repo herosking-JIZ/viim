@@ -29,6 +29,10 @@ utilisateurRoute.patch ('/profil',                    can('profil:modifier'),   
 
 
 // ── Admin ────────────────────────────────────────────────────
+// POST /utilisateurs — créer un nouvel utilisateur (IT ou Admin)
+
+utilisateurRoute.post  ('/',                          authorize('admin', 'it'),  UtilisateurController.create);
+
 // GET /utilisateurs — lister tous les utilisateurs (admin seulement)
 
 utilisateurRoute.get   ('/',                          authorize('admin'),        UtilisateurController.findAll);
