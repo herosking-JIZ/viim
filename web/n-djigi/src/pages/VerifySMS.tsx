@@ -2,11 +2,12 @@ import { useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { AlertCircle, Loader2, RotateCcw } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { getRoleRedirectUrl, ACCESS_ERROR_MESSAGES } from '@/utils/roleRedirect'
 
 export default function VerifySMS() {
   const location = useLocation()
   const navigate = useNavigate()
-  const { verifySms, resendSms } = useAuth()
+  const { verifySms, resendSms, user } = useAuth()
 
   const [code, setCode] = useState(['', '', '', '', '', ''])
   const [error, setError] = useState('')
@@ -72,8 +73,20 @@ export default function VerifySMS() {
 
     try {
       await verifySms(loginToken, smsCode)
-      navigate('/', { replace: true })
+
+      // Rediriger selon le rôle de l'utilisateur
+      if (user) {
+        navigate(getRoleRedirectUrl(user.role), { replace: true })
+      } else {
+        navigate('/', { replace: true })
+      }
     } catch (err: any) {
+      // Vérifier si c'est une erreur 403 (mobile-only role)
+      if (err?.response?.status === 403 && err?.response?.data?.code === 'MOBILE_ONLY_ROLE') {
+        setError(ACCESS_ERROR_MESSAGES.MOBILE_ONLY)
+        return
+      }
+
       const msg =
         err?.response?.data?.message ||
         err?.message ||

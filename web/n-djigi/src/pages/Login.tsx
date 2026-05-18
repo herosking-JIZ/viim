@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { MapPin, AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { getRoleRedirectUrl, ACCESS_ERROR_MESSAGES } from '@/utils/roleRedirect'
 
 export default function Login() {
-  const { login } = useAuth()
+  const { login, user } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -18,7 +19,13 @@ export default function Login() {
     setLoading(true)
     try {
       await login(email, password)
-      navigate('/')
+
+      // Vérifier si c'est un rôle web valide
+      if (user) {
+        navigate(getRoleRedirectUrl(user.role))
+      } else {
+        navigate('/')
+      }
     } catch (err: any) {
       // Vérifier si c'est une réponse 2FA
       if (err?.response?.data?.requires_2fa) {
@@ -28,6 +35,12 @@ export default function Login() {
             phoneMasked: err.response.data.phone_masked
           }
         })
+        return
+      }
+
+      // Vérifier si c'est une erreur 403 (mobile-only role)
+      if (err?.response?.status === 403 && err?.response?.data?.code === 'MOBILE_ONLY_ROLE') {
+        setError(ACCESS_ERROR_MESSAGES.MOBILE_ONLY)
         return
       }
 

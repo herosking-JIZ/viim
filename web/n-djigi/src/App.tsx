@@ -23,19 +23,25 @@ import Config from '@/pages/admin/Config'
 import Gestionnaires from '@/pages/admin/Gestionnaires'
 
 // Pages gestionnaire
+import ManagerDashboard from '@/pages/manager/ManagerDashboard'
 import ParkeurDashboard from '@/pages/parkeur/ParkeurDashboard'
 
 // Page partagée
 import ChangePassword from '@/pages/auth/ChangePassword'
+import { getRoleRedirectUrl } from '@/utils/roleRedirect'
 
 // ─── ProtectedRoute ───────────────────────────────────────────
+interface ProtectedRouteProps {
+  children: React.ReactNode
+  adminOnly?: boolean
+  managerOnly?: boolean
+}
+
 function ProtectedRoute({
   children,
   adminOnly = false,
-}: {
-  children: React.ReactNode
-  adminOnly?: boolean
-}) {
+  managerOnly = false,
+}: ProtectedRouteProps) {
   const { user, loading } = useAuth()
 
   if (loading) {
@@ -53,6 +59,11 @@ function ProtectedRoute({
     return <Navigate to="/" replace />
   }
 
+  // managerOnly : seuls gestionnaires ont accès
+  if (managerOnly && user.role !== 'gestionnaire') {
+    return <Navigate to="/" replace />
+  }
+
   return <>{children}</>
 }
 
@@ -61,6 +72,7 @@ function AppRoutes() {
   const { user } = useAuth()
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
+  const isManager = user?.role === 'gestionnaire'
 
   return (
     <Routes>
@@ -83,11 +95,35 @@ function AppRoutes() {
         {/* Index : dashboard selon le rôle */}
         <Route
           index
-          element={isAdmin ? <Dashboard /> : <ParkeurDashboard />}
+          element={
+            isAdmin ? (
+              <Dashboard />
+            ) : isManager ? (
+              <ManagerDashboard />
+            ) : (
+              <ParkeurDashboard />
+            )
+          }
         />
 
         {/* Profil — accessible à tous les rôles connectés */}
         <Route path="profil/mot-de-passe" element={<ChangePassword />} />
+
+        {/* Routes gestionnaire */}
+        <Route
+          path="manager"
+          element={
+            <ProtectedRoute managerOnly>
+              <ManagerDashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Routes admin */}
+        <Route
+          path="dashboard"
+          element={<ProtectedRoute adminOnly><Dashboard /></ProtectedRoute>}
+        />
 
         {/* Routes admin uniquement */}
         <Route
