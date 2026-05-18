@@ -65,22 +65,27 @@ const KeycloakAuthController = {
       }
 
       const { sub: keycloak_id, given_name, family_name, realm_access } = decoded;
-      const keycloakRoles = (realm_access?.roles || []).filter(r =>
-        r === 'admin' || r === 'gestionnaire' || r === 'ndjigi-admin'
+      // Extract relevant application roles (filter out offline_access, uma_authorization, etc.)
+      const allRoles = realm_access?.roles || [];
+      const keycloakRoles = allRoles.filter(r =>
+        r === 'admin' || r === 'gestionnaire' || r === 'passager' || r === 'chauffeur' || r === 'proprietaire' ||
+        r === 'ndjigi-admin' || r === 'ndjigi-gestionnaire' || r === 'ndjigi-passager' || r === 'ndjigi-chauffeur' || r === 'ndjigi-proprietaire'
       );
       console.log(`👤 User: ${keycloak_id}, Roles: ${keycloakRoles.join(', ') || 'none'}`);
-      console.log(`📋 All realm_access.roles:`, realm_access?.roles || []);
+      console.log(`📋 All realm_access.roles:`, allRoles);
 
       // 3️⃣ Map Keycloak roles to local role
       // Map from Keycloak role names to local DB role names
       const roleMapping = {
         'ndjigi-admin': 'admin',
+        'admin': 'admin',
         'gestionnaire': 'gestionnaire',
+        'ndjigi-gestionnaire': 'gestionnaire',
         'passager': 'passager',
-        'chauffeur': 'chauffeur',
-        'proprietaire': 'proprietaire',
         'ndjigi-passager': 'passager',
+        'chauffeur': 'chauffeur',
         'ndjigi-chauffeur': 'chauffeur',
+        'proprietaire': 'proprietaire',
         'ndjigi-proprietaire': 'proprietaire'
       };
 
