@@ -1,7 +1,7 @@
 import axios, { AxiosInstance } from 'axios'
-import type {  
+import type {
   ApiResponse,
-  LoginCredentials, LoginResponseData,
+  LoginCredentials, LoginResponseData, KeycloakLoginResponse,
   Utilisateur, PaginatedResponse, AccountStatus, CreateUserPayload,
   Document, DocumentStatus,
   Trajet,
@@ -34,14 +34,8 @@ api.interceptors.request.use((config) => {
 })
 
 // ─── Gérer les réponses : unwrap { success, data } ──────────
-// Le backend renvoie toujours { success, message, data, errors }
-// On unwrap automatiquement pour retourner directement `data`
 api.interceptors.response.use(
-  (res) => {
-    // Si la réponse suit le contrat { success, data }, on retourne la réponse telle quelle
-    // L'unwrap se fait dans chaque service (voir extractData)
-    return res
-  },
+  (res) => res,
   async (err) => {
     const status = err.response?.status
 
@@ -51,10 +45,13 @@ api.interceptors.response.use(
       if (refreshToken && !err.config._retry) {
         err.config._retry = true
         try {
-          const { data } = await axios.post('/api/v1/auth/refresh', { refreshToken })
-          const newToken = data.data?.tokens?.accessToken
+          const { data } = await axios.post('/api/v1/auth/refresh', { refresh_token: refreshToken })
+          const newToken = data.data?.access_token
           if (newToken) {
             localStorage.setItem(STORAGE_KEY_ACCESS, newToken)
+            if (data.data?.refresh_token) {
+              localStorage.setItem(STORAGE_KEY_REFRESH, data.data.refresh_token)
+            }
             err.config.headers.Authorization = `Bearer ${newToken}`
             return api(err.config)
           }
@@ -62,18 +59,14 @@ api.interceptors.response.use(
           localStorage.removeItem(STORAGE_KEY_ACCESS)
           localStorage.removeItem(STORAGE_KEY_REFRESH)
           localStorage.removeItem('ndjigi_user')
-          localStorage.removeItem('ndjigi_permissions')
           window.location.href = '/login'
-          return Promise.reject(err)  // ← ajouter ça pour stopper la chaîne
-
-          // Refresh échoué → déconnexion
+          return Promise.reject(err)
         }
       }
       // Pas de refresh token ou refresh échoué → déconnexion
       localStorage.removeItem(STORAGE_KEY_ACCESS)
       localStorage.removeItem(STORAGE_KEY_REFRESH)
       localStorage.removeItem('ndjigi_user')
-      localStorage.removeItem('ndjigi_permissions')
       window.location.href = '/login'
     }
     return Promise.reject(err)
@@ -88,6 +81,7 @@ function extractData<T>(apiResponse: ApiResponse<T>): T {
   if (!apiResponse.success) {
     const err: any = new Error(apiResponse.message || 'Erreur serveur')
     err.backendErrors = apiResponse.errors
+    err.response = { data: apiResponse }
     throw err
   }
   return apiResponse.data
@@ -107,8 +101,8 @@ let _promos = [...mock.MOCK_PROMOS]
 // AUTH
 // ═══════════════════════════════════════════════════════════════
 export const authService = {
-  // Retourne LoginResponseData (pas le wrapper)
-  login: async (creds: LoginCredentials): Promise<LoginResponseData> => {
+  // Phase 1: Retourne KeycloakLoginResponse
+  login: async (creds: LoginCredentials): Promise<KeycloakLoginResponse> => {
     if (IS_DEMO) {
       await delay()
       const expectedPwd = mock.MOCK_PASSWORDS[creds.email]
@@ -117,9 +111,27 @@ export const authService = {
         err.response = { data: { success: false, message: 'Identifiants incorrects' }, status: 401 }
         throw err
       }
-      return mock.MOCK_LOGIN_DATA[creds.email]
+      // Retourner mock au format Keycloak pour demo mode
+      const oldData = mock.MOCK_LOGIN_DATA[creds.email]
+      return {
+        access_token: oldData.tokens.accessToken,
+        refresh_token: oldData.tokens.refreshToken,
+        expires_in: 3600,
+        token_type: 'Bearer',
+        user: {
+          id_utilisateur: oldData.user.id_utilisateur,
+          keycloak_id: oldData.user.id_utilisateur,
+          email: oldData.user.email,
+          nom: oldData.user.nom,
+          prenom: oldData.user.prenom,
+          numero_telephone: oldData.user.numero_telephone,
+          photo_profil: oldData.user.photo_profil,
+          roles: (oldData.user.utilisateur_role || []).filter(r => r.actif).map(r => r.role as any),
+          auth_provider: 'keycloak'
+        }
+      }
     }
-    const { data } = await api.post<ApiResponse<LoginResponseData>>('/auth/login', creds)
+    const { data } = await api.post<ApiResponse<KeycloakLoginResponse>>('/auth/login', { email: creds.email, password: creds.mot_de_passe })
     return extractData(data)
   },
 

@@ -1,0 +1,1670 @@
+/**
+ * CONTROLLERS/KEYCLOAKAUTH CONTROLLER.JS
+ * Endpoints pour l'authentification Keycloak
+ *
+ * Routes:
+ *  POST /auth/login        { email, password } → { access_token, refresh_token, user, expires_in } | { requires_2fa, login_token }
+ *  POST /auth/refresh      { refresh_token } → { access_token, expires_in }
+ *  POST /auth/logout       { refresh_token } → { success: true }
+ *  POST /auth/verify-sms   { login_token, sms_code } → { access_token, refresh_token, user }
+ *  POST /auth/resend-sms   { login_token } → { success: true }
+ */
+
+const keycloakService = require('../services/keycloakService');
+const smsService = require('../services/smsService');
+const otpService = require('../services/otpService');
+const phoneService = require('../services/phoneService');
+const totpService = require('../services/totpService');
+const { prisma } = require('../config/db');
+const { getRedisClient } = require('../config/redis');
+const redis = getRedisClient();
+const jwt = require('jsonwebtoken');
+const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+const { encrypt, decrypt, generateTechPassword } = require('../utils/crypto');
+const { sendResetPasswordEmail } = require('../utils/email');
+
+const KeycloakAuthController = {
+  /**
+   * POST /auth/login
+   * Authentifie un utilisateur via Keycloak
+   * Si admin/gestionnaire: retourne requires_2fa=true + login_token (sans les vrais tokens)
+   * Sinon: retourne les tokens directement
+   */
+  async login(req, res) {
+    try {
+      const { email, password } = req.body;
+
+      console.log(`🔐 Login attempt for: ${email}`);
+
+      if (!email || !password) {
+        return res.status(400).json({
+          success: false,
+          message: 'Email et mot de passe requis.',
+          code: 'MISSING_FIELDS'
+        });
+      }
+
+      // 1️⃣ Appeler Keycloak pour obtenir les tokens
+      console.log('📡 Calling Keycloak...');
+      const kcTokens = await keycloakService.login(email, password);
+      console.log('✅ Keycloak tokens received:', { access_token: kcTokens.access_token ? '***' : 'missing', refresh_token: kcTokens.refresh_token ? '***' : 'missing' });
+
+      // 2️⃣ Décoder le access token pour récupérer les données utilisateur
+      console.log('🔓 Decoding JWT token...');
+      const decoded = jwt.decode(kcTokens.access_token);
+
+      if (!decoded) {
+        console.error('❌ Failed to decode JWT token');
+        return res.status(500).json({
+          success: false,
+          message: 'Erreur lors du décodage du token.',
+          code: 'TOKEN_DECODE_ERROR'
+        });
+      }
+
+      const { sub: keycloak_id, given_name, family_name, realm_access } = decoded;
+      const keycloakRoles = (realm_access?.roles || []).filter(r =>
+        r === 'admin' || r === 'gestionnaire' || r === 'ndjigi-admin'
+      );
+      console.log(`👤 User: ${keycloak_id}, Roles: ${keycloakRoles.join(', ') || 'none'}`);
+      console.log(`📋 All realm_access.roles:`, realm_access?.roles || []);
+
+      // 3️⃣ Récupérer ou créer l'utilisateur en BDD locale
+      let user = await prisma.utilisateur.findUnique({
+        where: { keycloak_id }
+      });
+
+      if (!user) {
+        // Auto-provisioning
+        user = await prisma.utilisateur.create({
+          data: {
+            keycloak_id,
+            email,
+            prenom: given_name || '',
+            nom: family_name || '',
+            mot_de_passe_hash: '', // Keycloak users don't use local passwords
+            numero_telephone: `temp-${keycloak_id.substring(0, 8)}`,
+            auth_provider: 'keycloak',
+            utilisateur_role: {
+              create: {
+                role: 'passager',
+                actif: true
+              }
+            }
+          },
+          include: {
+            utilisateur_role: { where: { actif: true } }
+          }
+        });
+
+        console.log(`✅ Auto-provisioning user during login: ${keycloak_id}`);
+      }
+
+      // 4️⃣ Vérifier les rôles et déterminer si 2FA requis
+      // Utiliser les rôles de Keycloak (source de vérité) au lieu de la BDD locale
+      const roles = keycloakRoles.length > 0 ? keycloakRoles : (user.utilisateur_role || []).map((ur) => ur.role);
+      const requires2FA = keycloakRoles.includes('admin') || keycloakRoles.includes('ndjigi-admin') || keycloakRoles.includes('gestionnaire');
+
+      // ─── Si 2FA requis : ne pas retourner les tokens, générer login_token ───
+      if (requires2FA) {
+        const loginToken = uuidv4();
+        const otp = crypto.randomInt(100000, 999999).toString();
+        const phone = user.numero_telephone || `temp-${keycloak_id.substring(0, 8)}`;
+
+        // Stocker en Redis : key="login:<login_token>", TTL=5min
+        await redis.setex(
+          `login:${loginToken}`,
+          300, // 5 minutes
+          JSON.stringify({
+            access_token: kcTokens.access_token,
+            refresh_token: kcTokens.refresh_token,
+            expires_in: kcTokens.expires_in,
+            token_type: kcTokens.token_type,
+            otp,
+            phone,
+            attempts: 0,
+            user_id: user.id_utilisateur,
+            created_at: Math.floor(Date.now() / 1000)
+          })
+        );
+
+        // Envoyer SMS
+        await smsService.send(phone, otp);
+
+        // Masquer le téléphone : +226 ** ** ** 56
+        const phoneMasked = phone.length >= 4
+          ? phone.slice(0, -4).replace(/\d(?=\d{0,2}$)/g, '*') + phone.slice(-4)
+          : '****';
+
+        return res.json({
+          success: true,
+          message: 'Code OTP envoyé par SMS.',
+          data: {
+            requires_2fa: true,
+            login_token: loginToken,
+            phone_masked: phoneMasked
+          }
+        });
+      }
+
+      // ─── Pas de 2FA : retourner les tokens directement ───
+      res.json({
+        success: true,
+        message: 'Connexion réussie.',
+        data: {
+          requires_2fa: false,
+          access_token: kcTokens.access_token,
+          refresh_token: kcTokens.refresh_token,
+          expires_in: kcTokens.expires_in,
+          token_type: kcTokens.token_type,
+          user: {
+            id_utilisateur: user.id_utilisateur,
+            keycloak_id: user.keycloak_id,
+            email: user.email,
+            nom: user.nom,
+            prenom: user.prenom,
+            numero_telephone: user.numero_telephone,
+            photo_profil: user.photo_profil,
+            roles: keycloakRoles.length > 0 ? keycloakRoles : ['passager'],
+            auth_provider: 'keycloak'
+          }
+        }
+      });
+    } catch (error) {
+      console.error('❌ Login error:', error.message);
+      console.error('Stack:', error.stack);
+
+      // Distinguer les erreurs Keycloak
+      if (error.message.includes('Login failed') || error.message.includes('Invalid user credentials')) {
+        return res.status(401).json({
+          success: false,
+          message: 'Email ou mot de passe incorrect.',
+          code: 'INVALID_CREDENTIALS',
+          data: null
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la connexion.',
+        code: 'LOGIN_ERROR',
+        data: null
+      });
+    }
+  },
+
+  /**
+   * POST /auth/refresh
+   * Renouvelle l'access token
+   */
+  async refresh(req, res) {
+    try {
+      const { refresh_token } = req.body;
+
+      if (!refresh_token) {
+        return res.status(400).json({
+          success: false,
+          message: 'Refresh token requis.',
+          code: 'MISSING_REFRESH_TOKEN'
+        });
+      }
+
+      // Appeler Keycloak pour renouveler le token
+      const kcTokens = await keycloakService.refresh(refresh_token);
+
+      res.json({
+        success: true,
+        data: {
+          access_token: kcTokens.access_token,
+          refresh_token: kcTokens.refresh_token,
+          expires_in: kcTokens.expires_in,
+          token_type: kcTokens.token_type
+        }
+      });
+    } catch (error) {
+      console.error('❌ Refresh error:', error.message);
+
+      res.status(401).json({
+        success: false,
+        message: 'Refresh token invalide ou expiré.',
+        code: 'REFRESH_FAILED'
+      });
+    }
+  },
+
+  /**
+   * POST /auth/logout
+   * Invalide la session côté Keycloak et ajoute le token à la blacklist
+   */
+  async logout(req, res) {
+    try {
+      const { refresh_token, access_token } = req.body;
+
+      if (!refresh_token) {
+        return res.status(400).json({
+          success: false,
+          message: 'Refresh token requis.',
+          code: 'MISSING_REFRESH_TOKEN'
+        });
+      }
+
+      // Invalider la session Keycloak
+      await keycloakService.logout(refresh_token);
+
+      // Blacklist tokens (si access_token fourni)
+      if (access_token) {
+        try {
+          const decoded = jwt.decode(access_token);
+          if (decoded && decoded.exp) {
+            const now = Math.floor(Date.now() / 1000);
+            const ttl = Math.max(decoded.exp - now, 0);
+            if (ttl > 0) {
+              const jti = decoded.jti || decoded.sub;
+              await redis.setex(`blacklist:${jti}`, ttl, '1');
+            }
+          }
+        } catch (e) {
+          console.warn('⚠️ Could not add token to blacklist:', e.message);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: 'Déconnexion réussie.'
+      });
+    } catch (error) {
+      console.error('❌ Logout error:', error.message);
+
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la déconnexion.',
+        code: 'LOGOUT_ERROR'
+      });
+    }
+  },
+
+  /**
+   * POST /auth/verify-sms
+   * Vérifie le code OTP et retourne les tokens
+   */
+  async verifySms(req, res) {
+    try {
+      const { login_token, sms_code } = req.body;
+
+      if (!login_token || !sms_code) {
+        return res.status(400).json({
+          success: false,
+          message: 'login_token et sms_code requis.',
+          code: 'MISSING_FIELDS'
+        });
+      }
+
+      // 1️⃣ Lire la session 2FA depuis Redis
+      const sessionData = await redis.get(`login:${login_token}`);
+
+      if (!sessionData) {
+        return res.status(400).json({
+          success: false,
+          message: 'Session SMS expirée ou invalide.',
+          code: 'SESSION_EXPIRED'
+        });
+      }
+
+      // Vérifier si bloqué après 3 tentatives
+      const blocked = await redis.exists(`blocked:login:${login_token}`);
+      if (blocked) {
+        return res.status(429).json({
+          success: false,
+          message: 'Trop de tentatives. Réessayez dans 15 minutes.',
+          code: 'BLOCKED_TEMPORARILY'
+        });
+      }
+
+      const session = JSON.parse(sessionData);
+      const { otp, access_token, refresh_token, expires_in, token_type, user_id, phone, attempts } = session;
+
+      // 2️⃣ Vérifier le code OTP
+      if (sms_code !== otp) {
+        const newAttempts = attempts + 1;
+
+        // Si 3ème tentative : bloquer 15 min
+        if (newAttempts >= 3) {
+          await redis.setex(`blocked:login:${login_token}`, 900, '1'); // 15 min
+          await redis.del(`login:${login_token}`);
+
+          return res.status(429).json({
+            success: false,
+            message: 'Trop de tentatives. Réessayez dans 15 minutes.',
+            code: 'BLOCKED_TEMPORARILY'
+          });
+        }
+
+        // Sinon : incrémenter et retourner l'erreur
+        await redis.setex(
+          `login:${login_token}`,
+          300,
+          JSON.stringify({ ...session, attempts: newAttempts })
+        );
+
+        return res.status(400).json({
+          success: false,
+          message: 'Code SMS incorrect.',
+          code: 'INVALID_SMS_CODE',
+          data: {
+            attempts_remaining: 3 - newAttempts
+          }
+        });
+      }
+
+      // 3️⃣ Code correct : supprimer la session, retourner les tokens
+      await redis.del(`login:${login_token}`);
+
+      // Récupérer l'utilisateur pour la réponse
+      const user = await prisma.utilisateur.findUnique({
+        where: { id_utilisateur: user_id },
+        include: { utilisateur_role: { where: { actif: true } } }
+      });
+
+      const roles = (user.utilisateur_role || []).map((ur) => ur.role);
+
+      res.json({
+        success: true,
+        message: 'SMS vérifié.',
+        data: {
+          access_token,
+          refresh_token,
+          expires_in,
+          token_type,
+          user: {
+            id_utilisateur: user.id_utilisateur,
+            keycloak_id: user.keycloak_id,
+            email: user.email,
+            nom: user.nom,
+            prenom: user.prenom,
+            numero_telephone: user.numero_telephone,
+            photo_profil: user.photo_profil,
+            roles: roles.length > 0 ? roles : ['passager'],
+            auth_provider: 'keycloak'
+          }
+        }
+      });
+    } catch (error) {
+      console.error('❌ Verify SMS error:', error.message);
+
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la vérification du code.',
+        code: 'VERIFY_ERROR'
+      });
+    }
+  },
+
+  /**
+   * POST /auth/resend-sms
+   * Renvoie le code OTP (avec cooldown 60s)
+   */
+  async resendSms(req, res) {
+    try {
+      const { login_token } = req.body;
+
+      if (!login_token) {
+        return res.status(400).json({
+          success: false,
+          message: 'login_token requis.',
+          code: 'MISSING_FIELDS'
+        });
+      }
+
+      // 1️⃣ Vérifier le cooldown (60s)
+      const cooldownKey = `cooldown:login:${login_token}`;
+      const onCooldown = await redis.exists(cooldownKey);
+
+      if (onCooldown) {
+        const ttl = await redis.ttl(cooldownKey);
+        return res.status(429).json({
+          success: false,
+          message: `Attendez ${ttl} secondes avant de renvoyer.`,
+          code: 'RESEND_COOLDOWN',
+          data: {
+            retry_after: ttl
+          }
+        });
+      }
+
+      // 2️⃣ Lire la session 2FA
+      const sessionData = await redis.get(`login:${login_token}`);
+
+      if (!sessionData) {
+        return res.status(400).json({
+          success: false,
+          message: 'Session SMS expirée.',
+          code: 'SESSION_EXPIRED'
+        });
+      }
+
+      const session = JSON.parse(sessionData);
+      const { otp, phone } = session;
+
+      // 3️⃣ Renvoyer le SMS et mettre en place le cooldown
+      await smsService.send(phone, otp);
+      await redis.setex(cooldownKey, 60, '1'); // Cooldown 60s
+
+      res.json({
+        success: true,
+        message: 'Nouveau code SMS envoyé.'
+      });
+    } catch (error) {
+      console.error('❌ Resend SMS error:', error.message);
+
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors du renvoi du code.',
+        code: 'RESEND_ERROR'
+      });
+    }
+  },
+
+  /**
+   * POST /auth/forgot-password
+   * Demande de réinitialisation de mot de passe
+   */
+  async forgotPassword(req, res) {
+    try {
+      const { email } = req.body;
+
+      if (!email) {
+        return res.status(400).json({
+          success: false,
+          message: 'Email requis.',
+          code: 'MISSING_EMAIL'
+        });
+      }
+
+      // Toujours retourner un message succès (prévention d'énumération)
+      const successResponse = () => res.status(200).json({
+        success: true,
+        message: 'Si cet email existe, un lien de réinitialisation a été envoyé.'
+      });
+
+      const user = await prisma.utilisateur.findUnique({
+        where: { email }
+      });
+
+      if (!user || user.statut_compte !== 'actif') {
+        return successResponse();
+      }
+
+      const reset_token = crypto.randomUUID();
+      const reset_token_expire = new Date(Date.now() + 15 * 60 * 1000);
+
+      await prisma.utilisateur.update({
+        where: { email },
+        data: { reset_token, reset_token_expire }
+      });
+
+      await sendResetPasswordEmail(email, user.prenom, reset_token);
+      return successResponse();
+    } catch (error) {
+      console.error('❌ Forgot password error:', error.message);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur serveur lors de la demande de réinitialisation.',
+        code: 'FORGOT_PASSWORD_ERROR'
+      });
+    }
+  },
+
+  /**
+   * POST /auth/reset-password
+   * Applique la réinitialisation de mot de passe
+   */
+  async resetPassword(req, res) {
+    try {
+      const { token, newPassword } = req.body;
+
+      if (!token || !newPassword) {
+        return res.status(400).json({
+          success: false,
+          message: 'Token et nouveau mot de passe requis.',
+          code: 'MISSING_FIELDS'
+        });
+      }
+
+      const user = await prisma.utilisateur.findFirst({
+        where: {
+          reset_token: token,
+          reset_token_expire: { gt: new Date() }
+        }
+      });
+
+      if (!user) {
+        return res.status(400).json({
+          success: false,
+          message: 'Lien invalide ou expiré. Faites une nouvelle demande.',
+          code: 'INVALID_RESET_TOKEN'
+        });
+      }
+
+      const mot_de_passe_hash = await bcrypt.hash(newPassword, 12);
+
+      await prisma.$transaction([
+        prisma.utilisateur.update({
+          where: { id_utilisateur: user.id_utilisateur },
+          data: {
+            mot_de_passe_hash,
+            reset_token: null,
+            reset_token_expire: null,
+            tentatives_connexion: 0,
+            bloque_jusqu_au: null
+          }
+        })
+      ]);
+
+      res.json({
+        success: true,
+        message: 'Mot de passe réinitialisé avec succès. Vous pouvez vous connecter.'
+      });
+    } catch (error) {
+      console.error('❌ Reset password error:', error.message);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur serveur lors de la réinitialisation.',
+        code: 'RESET_PASSWORD_ERROR'
+      });
+    }
+  },
+
+  /**
+   * POST /auth/admin/users
+   * Création d'utilisateur par un administrateur
+   */
+  async createUserByAdmin(req, res) {
+    try {
+      const { nom, prenom, email, mot_de_passe, role, numero_telephone, adresse, parking_id } = req.body;
+
+      // Vérifications d'unicité
+      const existingEmail = await prisma.utilisateur.findUnique({ where: { email } });
+      if (existingEmail) {
+        return res.status(409).json({
+          success: false,
+          message: 'Un compte avec cet email existe déjà.',
+          errors: { field: 'email', code: 'DUPLICATE_EMAIL' }
+        });
+      }
+
+      const existingPhone = await prisma.utilisateur.findUnique({ where: { numero_telephone } });
+      if (existingPhone) {
+        return res.status(409).json({
+          success: false,
+          message: 'Ce numéro de téléphone est déjà utilisé.',
+          errors: { field: 'numero_telephone', code: 'DUPLICATE_PHONE' }
+        });
+      }
+
+      const mot_de_passe_hash = await bcrypt.hash(mot_de_passe, 12);
+
+      const newUser = await prisma.$transaction(async (tx) => {
+        const user = await tx.utilisateur.create({
+          data: {
+            nom,
+            prenom,
+            email,
+            mot_de_passe_hash,
+            numero_telephone,
+            adresse,
+            auth_provider: 'keycloak',
+            utilisateur_role: {
+              create: { role, actif: true }
+            }
+          }
+        });
+
+        if (role === 'passager') {
+          await tx.passager.create({ data: { id_passager: user.id_utilisateur } });
+        }
+        if (role === 'chauffeur') {
+          await tx.chauffeur.create({
+            data: {
+              id_chauffeur: user.id_utilisateur,
+              type_service: 'vtc',
+              statut_validation: 'valide'
+            }
+          });
+        }
+        if (role === 'proprietaire') {
+          await tx.proprietaire.create({ data: { id_proprietaire: user.id_utilisateur } });
+        }
+        if (role === 'gestionnaire') {
+          if (!parking_id) {
+            throw new Error('Un parking doit être associé au gestionnaire.');
+          }
+          await tx.gestionnaire_parking.create({
+            data: {
+              id_gestionnaire: user.id_utilisateur,
+              id_parking: parking_id
+            }
+          });
+        }
+
+        await tx.portefeuille.create({
+          data: { id_utilisateur: user.id_utilisateur }
+        });
+
+        return user;
+      });
+
+      const createdUser = await prisma.utilisateur.findUnique({
+        where: { id_utilisateur: newUser.id_utilisateur },
+        include: {
+          utilisateur_role: { where: { actif: true } },
+          gestionnaire: true
+        }
+      });
+
+      const formattedUser = {
+        id_utilisateur: createdUser.id_utilisateur,
+        nom: createdUser.nom,
+        prenom: createdUser.prenom,
+        email: createdUser.email,
+        numero_telephone: createdUser.numero_telephone,
+        adresse: createdUser.adresse,
+        statut_compte: createdUser.statut_compte,
+        date_inscription: createdUser.date_inscription,
+        photo_profil: createdUser.photo_profil,
+        note_moyenne: createdUser.note_moyenne,
+        role: createdUser.utilisateur_role.map(r => r.role),
+        parking_id: createdUser.gestionnaire?.id_parking || null
+      };
+
+      res.status(201).json({
+        success: true,
+        message: 'Utilisateur créé avec succès.',
+        data: formattedUser,
+        errors: null
+      });
+    } catch (error) {
+      console.error('❌ Create user error:', error.message);
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Erreur serveur lors de la création.',
+        errors: error.message
+      });
+    }
+  },
+
+  /**
+   * POST /auth/otp/request
+   * Request OTP code for phone-based authentication
+   * Body: { phone }
+   * Rate limited: 1 per 60s per phone, max 5 per 24h
+   */
+  async otpRequest(req, res) {
+    try {
+      const { phone } = req.body;
+
+      if (!phone) {
+        return res.status(400).json({
+          success: false,
+          message: 'Numéro de téléphone requis.',
+          code: 'MISSING_PHONE'
+        });
+      }
+
+      // Normalize and validate phone
+      let normalizedPhone;
+      try {
+        normalizedPhone = phoneService.normalize(phone);
+      } catch (error) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+          code: 'INVALID_PHONE'
+        });
+      }
+
+      // Check if phone is blocked
+      const isBlocked = await otpService.isPhoneBlocked(normalizedPhone);
+      if (isBlocked) {
+        return res.status(429).json({
+          success: false,
+          message: 'Trop de tentatives. Réessayez dans 15 minutes.',
+          code: 'OTP_BLOCKED'
+        });
+      }
+
+      // Generate OTP and store in Redis
+      const otpCode = otpService.generateOtp();
+      await otpService.storeOtp(normalizedPhone, otpCode);
+
+      // Send SMS
+      try {
+        await smsService.send(normalizedPhone, otpCode);
+      } catch (smsError) {
+        console.error('❌ SMS send error:', smsError.message);
+        return res.status(500).json({
+          success: false,
+          message: 'Erreur lors de l\'envoi du SMS.',
+          code: 'SMS_ERROR'
+        });
+      }
+
+      // Log authentication attempt
+      try {
+        await prisma.auth_log.create({
+          data: {
+            phone: normalizedPhone,
+            action: 'otp_request',
+            status: 'success',
+            ip_address: req.ip
+          }
+        });
+      } catch (logError) {
+        console.warn('⚠️ Could not log OTP request:', logError.message);
+      }
+
+      res.json({
+        success: true,
+        message: 'Code OTP envoyé par SMS.',
+        data: {
+          phone_masked: phoneService.mask(normalizedPhone)
+        }
+      });
+    } catch (error) {
+      console.error('❌ OTP request error:', error.message);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la demande de code OTP.',
+        code: 'OTP_REQUEST_ERROR'
+      });
+    }
+  },
+
+  /**
+   * POST /auth/otp/verify
+   * Verify OTP and create/login user
+   * Body: { phone, otp_code }
+   * Complex flow: OTP validation → User search/creation in Keycloak → Token generation
+   */
+  async otpVerify(req, res) {
+    try {
+      const { phone, otp_code } = req.body;
+
+      if (!phone || !otp_code) {
+        return res.status(400).json({
+          success: false,
+          message: 'Téléphone et code OTP requis.',
+          code: 'MISSING_FIELDS'
+        });
+      }
+
+      // Normalize phone
+      let normalizedPhone;
+      try {
+        normalizedPhone = phoneService.normalize(phone);
+      } catch (error) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+          code: 'INVALID_PHONE'
+        });
+      }
+
+      // Verify OTP code
+      try {
+        await otpService.verifyOtp(normalizedPhone, otp_code);
+      } catch (otpError) {
+        if (otpError.code === 'OTP_BLOCKED') {
+          return res.status(429).json({
+            success: false,
+            message: 'Trop de tentatives. Réessayez dans 15 minutes.',
+            code: 'OTP_BLOCKED'
+          });
+        }
+
+        if (otpError.code === 'OTP_EXPIRED') {
+          return res.status(400).json({
+            success: false,
+            message: 'Code OTP expiré ou invalide.',
+            code: 'OTP_EXPIRED'
+          });
+        }
+
+        return res.status(400).json({
+          success: false,
+          message: 'Code OTP incorrect.',
+          code: 'INVALID_OTP',
+          data: {
+            attempts_remaining: otpError.attemptsRemaining
+          }
+        });
+      }
+
+      // Search user in Keycloak by username (phone)
+      let keycloakUser = null;
+      let localUser = null;
+      let techPassword;
+
+      try {
+        keycloakUser = await keycloakService.findUserByUsername(normalizedPhone);
+      } catch (error) {
+        console.warn('⚠️ Could not search Keycloak user:', error.message);
+      }
+
+      // If user not found, create in Keycloak + local DB
+      if (!keycloakUser) {
+        try {
+          // Generate random technical password
+          techPassword = generateTechPassword();
+
+          // Create user in Keycloak
+          keycloakUser = await keycloakService.adminAPI.users.create({
+            realm: process.env.KEYCLOAK_REALM,
+            username: normalizedPhone,
+            attributes: {
+              phone: normalizedPhone
+            },
+            credentials: [
+              {
+                type: 'password',
+                value: techPassword,
+                temporary: false
+              }
+            ],
+            enabled: true
+          });
+
+          // Assign passager role
+          await keycloakService.adminAPI.users.addClientRoleMappings({
+            realm: process.env.KEYCLOAK_REALM,
+            id: keycloakUser.id,
+            clientUniqueId: process.env.KEYCLOAK_CLIENT_ID,
+            roles: [{ name: 'ndjigi-passager' }]
+          });
+
+          // Create local user
+          const encryptedPassword = encrypt(techPassword);
+
+          localUser = await prisma.utilisateur.create({
+            data: {
+              keycloak_id: keycloakUser.id,
+              numero_telephone: normalizedPhone,
+              email: null,
+              prenom: null,
+              nom: null,
+              auth_provider: 'keycloak',
+              auth_method_otp: true,
+              tech_password_encrypted: encryptedPassword,
+              utilisateur_role: {
+                create: {
+                  role: 'passager',
+                  actif: true
+                }
+              }
+            },
+            include: {
+              utilisateur_role: { where: { actif: true } }
+            }
+          });
+
+          console.log(`✅ Created new user via OTP: ${normalizedPhone}`);
+        } catch (createError) {
+          console.error('❌ Error creating Keycloak user:', createError.message);
+          return res.status(500).json({
+            success: false,
+            message: 'Erreur lors de la création du compte.',
+            code: 'USER_CREATION_ERROR'
+          });
+        }
+      } else {
+        // User exists: retrieve and decrypt tech password
+        try {
+          localUser = await prisma.utilisateur.findUnique({
+            where: { keycloak_id: keycloakUser.id },
+            include: {
+              utilisateur_role: { where: { actif: true } }
+            }
+          });
+
+          if (!localUser?.tech_password_encrypted) {
+            return res.status(500).json({
+              success: false,
+              message: 'Mot de passe technique non trouvé.',
+              code: 'MISSING_TECH_PASSWORD'
+            });
+          }
+
+          techPassword = decrypt(localUser.tech_password_encrypted);
+        } catch (decryptError) {
+          console.error('❌ Error decrypting tech password:', decryptError.message);
+          return res.status(500).json({
+            success: false,
+            message: 'Erreur lors du déchiffrement du mot de passe.',
+            code: 'DECRYPTION_ERROR'
+          });
+        }
+      }
+
+      // Exchange technical password for Keycloak tokens
+      let kcTokens;
+      try {
+        kcTokens = await keycloakService.login(normalizedPhone, techPassword);
+      } catch (loginError) {
+        console.error('❌ Keycloak login error:', loginError.message);
+        return res.status(401).json({
+          success: false,
+          message: 'Erreur lors de l\'authentification.',
+          code: 'KEYCLOAK_LOGIN_ERROR'
+        });
+      }
+
+      // [PHASE 6] Check if user has TOTP configured
+      let hasTotp = false;
+      try {
+        // Fetch user from Keycloak to check credentials
+        const kcUser = await keycloakService.adminAPI.users.findOne({
+          realm: process.env.KEYCLOAK_REALM,
+          id: keycloakUser.id
+        });
+
+        // Check if credentials contain type: 'otp'
+        hasTotp = kcUser.credentials?.some(c => c.type === 'otp') || false;
+      } catch (totpCheckError) {
+        console.warn('⚠️ Could not check TOTP status:', totpCheckError.message);
+        // Continue without TOTP check if error
+      }
+
+      const roles = (localUser?.utilisateur_role || []).map(ur => ur.role);
+
+      // Log successful authentication
+      try {
+        await prisma.auth_log.create({
+          data: {
+            phone: normalizedPhone,
+            action: 'otp_verify',
+            status: 'success',
+            ip_address: req.ip
+          }
+        });
+      } catch (logError) {
+        console.warn('⚠️ Could not log OTP verification:', logError.message);
+      }
+
+      // [PHASE 6] Handle TOTP requirement
+      if (!hasTotp) {
+        // User doesn't have TOTP: generate secret and return setup response
+        const loginToken = uuidv4();
+        const { secret, qr_code_url } = totpService.generateSecret(localUser.email || normalizedPhone);
+
+        // Store tokens + TOTP secret in Redis for 5 minutes
+        await redis.setex(
+          `login:${loginToken}`,
+          300,
+          JSON.stringify({
+            access_token: kcTokens.access_token,
+            refresh_token: kcTokens.refresh_token,
+            expires_in: kcTokens.expires_in,
+            token_type: kcTokens.token_type,
+            totp_secret: secret,
+            keycloak_id: keycloakUser.id,
+            user_id: localUser.id_utilisateur,
+            setup_mode: true,
+            created_at: Math.floor(Date.now() / 1000)
+          })
+        );
+
+        return res.json({
+          success: true,
+          message: 'Configuration du 2FA requise.',
+          data: {
+            requires_totp_setup: true,
+            login_token: loginToken,
+            totp_secret: secret,
+            qr_code_url: qr_code_url
+          }
+        });
+      } else {
+        // User has TOTP configured: store tokens for verification
+        const loginToken = uuidv4();
+
+        await redis.setex(
+          `login:${loginToken}`,
+          300,
+          JSON.stringify({
+            access_token: kcTokens.access_token,
+            refresh_token: kcTokens.refresh_token,
+            expires_in: kcTokens.expires_in,
+            token_type: kcTokens.token_type,
+            keycloak_id: keycloakUser.id,
+            user_id: localUser.id_utilisateur,
+            attempts: 0,
+            setup_mode: false,
+            created_at: Math.floor(Date.now() / 1000)
+          })
+        );
+
+        return res.json({
+          success: true,
+          message: 'Vérification du 2FA requise.',
+          data: {
+            requires_totp: true,
+            login_token: loginToken
+          }
+        });
+      }
+
+      // This line should not be reached (responses above return), but keeping for clarity
+      res.json({
+        success: true,
+        message: 'Authentification réussie.',
+        data: {
+          access_token: kcTokens.access_token,
+          refresh_token: kcTokens.refresh_token,
+          expires_in: kcTokens.expires_in,
+          token_type: kcTokens.token_type,
+          user: {
+            id_utilisateur: localUser.id_utilisateur,
+            keycloak_id: keycloakUser.id,
+            numero_telephone: normalizedPhone,
+            email: localUser.email,
+            prenom: localUser.prenom,
+            nom: localUser.nom,
+            photo_profil: localUser.photo_profil,
+            roles: roles.length > 0 ? roles : ['passager'],
+            auth_provider: 'keycloak',
+            auth_method_otp: true
+          }
+        }
+      });
+    } catch (error) {
+      console.error('❌ OTP verify error:', error.message);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la vérification du code.',
+        code: 'OTP_VERIFY_ERROR'
+      });
+    }
+  },
+
+  /**
+   * POST /auth/otp/resend
+   * Resend OTP code (60-second cooldown)
+   * Body: { phone }
+   */
+  async otpResend(req, res) {
+    try {
+      const { phone } = req.body;
+
+      if (!phone) {
+        return res.status(400).json({
+          success: false,
+          message: 'Numéro de téléphone requis.',
+          code: 'MISSING_PHONE'
+        });
+      }
+
+      // Normalize phone
+      let normalizedPhone;
+      try {
+        normalizedPhone = phoneService.normalize(phone);
+      } catch (error) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+          code: 'INVALID_PHONE'
+        });
+      }
+
+      // Check cooldown
+      try {
+        await otpService.resendOtp(normalizedPhone);
+      } catch (cooldownError) {
+        if (cooldownError.code === 'RESEND_COOLDOWN') {
+          return res.status(429).json({
+            success: false,
+            message: `Attendez ${cooldownError.retryAfter} secondes avant de renvoyer.`,
+            code: 'RESEND_COOLDOWN',
+            data: {
+              retry_after: cooldownError.retryAfter
+            }
+          });
+        }
+        throw cooldownError;
+      }
+
+      // Generate new OTP
+      const otpCode = otpService.generateOtp();
+      await otpService.storeOtp(normalizedPhone, otpCode);
+
+      // Send SMS
+      try {
+        await smsService.send(normalizedPhone, otpCode);
+      } catch (smsError) {
+        console.error('❌ SMS send error:', smsError.message);
+        return res.status(500).json({
+          success: false,
+          message: 'Erreur lors de l\'envoi du SMS.',
+          code: 'SMS_ERROR'
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Nouveau code OTP envoyé.'
+      });
+    } catch (error) {
+      console.error('❌ OTP resend error:', error.message);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors du renvoi du code.',
+        code: 'OTP_RESEND_ERROR'
+      });
+    }
+  },
+
+  /**
+   * POST /auth/totp/setup
+   * Setup TOTP 2FA after OTP verification
+   * Body: { login_token, totp_code }
+   * Validates TOTP code and registers credential in Keycloak
+   */
+  async totpSetup(req, res) {
+    try {
+      const { login_token, totp_code } = req.body;
+
+      if (!login_token || !totp_code) {
+        return res.status(400).json({
+          success: false,
+          message: 'login_token et code TOTP requis.',
+          code: 'MISSING_FIELDS'
+        });
+      }
+
+      // Get session from Redis
+      const sessionData = await redis.get(`login:${login_token}`);
+      if (!sessionData) {
+        return res.status(400).json({
+          success: false,
+          message: 'Session expirée.',
+          code: 'SESSION_EXPIRED'
+        });
+      }
+
+      const session = JSON.parse(sessionData);
+
+      // Verify TOTP code against stored secret
+      const isValid = totpService.verify(session.totp_secret, totp_code);
+
+      if (!isValid) {
+        return res.status(401).json({
+          success: false,
+          message: 'Code TOTP incorrect.',
+          code: 'INVALID_TOTP'
+        });
+      }
+
+      // Register TOTP credential in Keycloak via Admin API
+      try {
+        // Get user object first
+        const user = await keycloakService.adminAPI.users.findOne({
+          realm: process.env.KEYCLOAK_REALM,
+          id: session.keycloak_id
+        });
+
+        // Push OTP credential
+        const updatedCredentials = [
+          ...(user.credentials || []),
+          {
+            type: 'otp',
+            userLabel: 'Google Authenticator',
+            credentialData: JSON.stringify({
+              subType: 'totp',
+              counter: 0
+            }),
+            secretData: JSON.stringify({
+              value: session.totp_secret
+            })
+          }
+        ];
+
+        // Update user with TOTP credential
+        await keycloakService.adminAPI.users.update(
+          { realm: process.env.KEYCLOAK_REALM, id: session.keycloak_id },
+          { credentials: updatedCredentials }
+        );
+
+        console.log(`✅ TOTP registered for user: ${session.keycloak_id}`);
+      } catch (totpRegisterError) {
+        console.error('❌ Error registering TOTP in Keycloak:', totpRegisterError.message);
+        return res.status(500).json({
+          success: false,
+          message: 'Erreur lors de l\'enregistrement du 2FA.',
+          code: 'TOTP_REGISTER_ERROR'
+        });
+      }
+
+      // Delete session and return tokens
+      await redis.del(`login:${login_token}`);
+
+      res.json({
+        success: true,
+        message: 'TOTP configuré.',
+        data: {
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+          expires_in: session.expires_in,
+          token_type: session.token_type,
+          user: {
+            id_utilisateur: session.user_id,
+            keycloak_id: session.keycloak_id,
+            auth_provider: 'keycloak',
+            auth_method_otp: true
+          }
+        }
+      });
+    } catch (error) {
+      console.error('❌ TOTP setup error:', error.message);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la configuration du TOTP.',
+        code: 'TOTP_SETUP_ERROR'
+      });
+    }
+  },
+
+  /**
+   * POST /auth/totp/verify
+   * Verify TOTP code for users with 2FA enabled
+   * Body: { login_token, totp_code }
+   * Validates TOTP and returns tokens
+   */
+  async totpVerify(req, res) {
+    try {
+      const { login_token, totp_code } = req.body;
+
+      if (!login_token || !totp_code) {
+        return res.status(400).json({
+          success: false,
+          message: 'login_token et code TOTP requis.',
+          code: 'MISSING_FIELDS'
+        });
+      }
+
+      // Get session from Redis
+      const sessionData = await redis.get(`login:${login_token}`);
+      if (!sessionData) {
+        return res.status(400).json({
+          success: false,
+          message: 'Session expirée.',
+          code: 'SESSION_EXPIRED'
+        });
+      }
+
+      const session = JSON.parse(sessionData);
+      const attempts = session.attempts || 0;
+
+      // Fetch user from Keycloak to get TOTP secret
+      let totpSecret;
+      try {
+        const user = await keycloakService.adminAPI.users.findOne({
+          realm: process.env.KEYCLOAK_REALM,
+          id: session.keycloak_id
+        });
+
+        const totpCredential = user.credentials?.find(c => c.type === 'otp');
+        if (!totpCredential) {
+          return res.status(500).json({
+            success: false,
+            message: 'TOTP non configuré.',
+            code: 'TOTP_NOT_CONFIGURED'
+          });
+        }
+
+        // Extract secret from credential
+        try {
+          const secretData = JSON.parse(totpCredential.secretData);
+          totpSecret = secretData.value;
+        } catch (parseError) {
+          console.error('❌ Error parsing TOTP secret:', parseError.message);
+          return res.status(500).json({
+            success: false,
+            message: 'Erreur lors de la récupération du TOTP.',
+            code: 'TOTP_PARSE_ERROR'
+          });
+        }
+      } catch (fetchError) {
+        console.error('❌ Error fetching user for TOTP:', fetchError.message);
+        return res.status(500).json({
+          success: false,
+          message: 'Erreur lors de la vérification du TOTP.',
+          code: 'TOTP_FETCH_ERROR'
+        });
+      }
+
+      // Validate TOTP code
+      const isValid = totpService.verify(totpSecret, totp_code);
+
+      if (!isValid) {
+        const newAttempts = attempts + 1;
+
+        if (newAttempts >= 3) {
+          // Block after 3 failures
+          await redis.del(`login:${login_token}`);
+
+          return res.status(401).json({
+            success: false,
+            message: 'Trop de tentatives.',
+            code: 'TOTP_BLOCKED'
+          });
+        }
+
+        // Update attempts in Redis
+        await redis.setex(
+          `login:${login_token}`,
+          300,
+          JSON.stringify({ ...session, attempts: newAttempts })
+        );
+
+        return res.status(401).json({
+          success: false,
+          message: 'Code TOTP incorrect.',
+          code: 'INVALID_TOTP',
+          data: {
+            attempts_remaining: 3 - newAttempts
+          }
+        });
+      }
+
+      // Valid code: return tokens
+      await redis.del(`login:${login_token}`);
+
+      res.json({
+        success: true,
+        message: 'TOTP vérifié.',
+        data: {
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+          expires_in: session.expires_in,
+          token_type: session.token_type,
+          user: {
+            id_utilisateur: session.user_id,
+            keycloak_id: session.keycloak_id,
+            auth_provider: 'keycloak',
+            auth_method_otp: true
+          }
+        }
+      });
+    } catch (error) {
+      console.error('❌ TOTP verify error:', error.message);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la vérification du TOTP.',
+        code: 'TOTP_VERIFY_ERROR'
+      });
+    }
+  },
+
+  // ──── Phase 7: Password Reset & Admin Gestionnaire Management ────
+
+  /**
+   * Forgot password: Trigger Keycloak email reset
+   * POST /auth/forgot-password
+   * Body: { email }
+   * Always returns 200 (don't reveal if email exists for security)
+   */
+  async forgotPassword(req, res) {
+    try {
+      const { email } = req.body;
+
+      if (!email) {
+        return res.status(200).json({
+          success: true,
+          message: 'Si cette adresse existe, un email a été envoyé.'
+        });
+      }
+
+      // Search for user in Keycloak
+      const users = await keycloakService.adminAPI.users.find({
+        realm: process.env.KEYCLOAK_REALM,
+        email: email,
+        exact: true
+      });
+
+      if (users.length > 0) {
+        const user = users[0];
+
+        // Trigger UPDATE_PASSWORD action email
+        try {
+          await keycloakService.adminAPI.users.executeActionsEmail({
+            realm: process.env.KEYCLOAK_REALM,
+            id: user.id,
+            actions: ['UPDATE_PASSWORD'],
+            redirectUri: `${process.env.APP_URL}/login`,
+            clientId: process.env.KEYCLOAK_CLIENT_ID,
+            lifespan: 3600 // 1 hour
+          });
+
+          console.log(`✅ Password reset email triggered for ${email}`);
+        } catch (executeError) {
+          console.error(`⚠️ Error executing password reset action for ${email}:`, executeError.message);
+          // Still return 200 to prevent email enumeration
+        }
+      }
+
+      // Always return 200 (security: don't reveal if email exists)
+      return res.status(200).json({
+        success: true,
+        message: 'Si cette adresse existe, un email a été envoyé.'
+      });
+    } catch (error) {
+      console.error('❌ Forgot password error:', error.message);
+      // Still return 200 on error (security)
+      return res.status(200).json({
+        success: true,
+        message: 'Si cette adresse existe, un email a été envoyé.'
+      });
+    }
+  },
+
+  /**
+   * Create gestionnaire account
+   * POST /api/v1/admin/gestionnaires
+   * Body: { email, nom, prenom, phone, parkings_assignes: string[] }
+   * Requires: ndjigi-admin role
+   */
+  async createGestionnaire(req, res) {
+    try {
+      const { email, nom, prenom, phone, parkings_assignes } = req.body;
+
+      // Validate input
+      if (!email || !nom || !prenom || !phone || !Array.isArray(parkings_assignes)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Missing required fields: email, nom, prenom, phone, parkings_assignes',
+          code: 'VALIDATION_ERROR'
+        });
+      }
+
+      if (parkings_assignes.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'At least one parking must be assigned',
+          code: 'NO_PARKINGS'
+        });
+      }
+
+      // Generate temporary password (12 random chars)
+      const tempPassword = require('crypto').randomBytes(6).toString('hex').substring(0, 12);
+
+      // Create user in Keycloak
+      const newUser = {
+        email: email,
+        emailVerified: false,
+        firstName: prenom,
+        lastName: nom,
+        enabled: true,
+        attributes: {
+          phone: phone
+        },
+        requiredActions: ['UPDATE_PASSWORD', 'VERIFY_EMAIL'],
+        credentials: [
+          {
+            type: 'password',
+            value: tempPassword,
+            temporary: true
+          }
+        ]
+      };
+
+      const keycloakUser = await keycloakService.adminAPI.users.create({
+        realm: process.env.KEYCLOAK_REALM,
+        body: newUser
+      });
+
+      const keycloak_id = keycloakUser.id;
+
+      // Assign ndjigi-gestionnaire role
+      const realm = await keycloakService.adminAPI.realms.findOne({
+        realm: process.env.KEYCLOAK_REALM
+      });
+
+      const gestionnairerole = await keycloakService.adminAPI.roles.findOneByName({
+        realm: process.env.KEYCLOAK_REALM,
+        name: 'ndjigi-gestionnaire'
+      });
+
+      if (gestionnairerole) {
+        await keycloakService.adminAPI.users.addRealmRoleMappings({
+          realm: process.env.KEYCLOAK_REALM,
+          id: keycloak_id,
+          roles: [gestionnairerole]
+        });
+      }
+
+      // Create user in local database
+      const id_utilisateur = require('uuid').v4();
+
+      const dbUser = await prisma.utilisateur.create({
+        data: {
+          id_utilisateur,
+          keycloak_id,
+          email,
+          nom,
+          prenom,
+          numero_telephone: phone,
+          phone,
+          mot_de_passe_hash: '', // Not used for Keycloak users
+          auth_provider: 'keycloak',
+          statut_compte: 'actif'
+        }
+      });
+
+      // Fetch parkings to assign
+      const parkings = await prisma.parking.findMany({
+        where: {
+          id_parking: {
+            in: parkings_assignes
+          }
+        }
+      });
+
+      if (parkings.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'No valid parkings found',
+          code: 'INVALID_PARKINGS'
+        });
+      }
+
+      // Assign parkings via gestionnaire_parking
+      await Promise.all(
+        parkings.map(p =>
+          prisma.gestionnaire_parking.upsert({
+            where: {
+              id_gestionnaire_id_parking: {
+                id_gestionnaire: id_utilisateur,
+                id_parking: p.id_parking
+              }
+            },
+            update: {},
+            create: {
+              id_gestionnaire: id_utilisateur,
+              id_parking: p.id_parking,
+              date_prise_poste: new Date()
+            }
+          })
+        )
+      );
+
+      // Send welcome email
+      const emailService = require('../services/emailService');
+      try {
+        await emailService.sendGestionnaireWelcome(email, {
+          prenom,
+          nom,
+          email,
+          tempPassword,
+          parkings: parkings.map(p => ({
+            nom: p.nom,
+            adresse: p.adresse
+          }))
+        });
+      } catch (emailError) {
+        console.error('⚠️ Failed to send welcome email:', emailError.message);
+        // Don't fail the request if email fails
+      }
+
+      // Log auth event
+      await prisma.auth_log.create({
+        data: {
+          user_id: id_utilisateur,
+          event_type: 'GESTIONNAIRE_CREATED_BY_ADMIN',
+          metadata: {
+            parkings: parkings.map(p => p.nom)
+          }
+        }
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: 'Gestionnaire créé avec succès',
+        data: {
+          id_utilisateur,
+          keycloak_id,
+          email,
+          nom,
+          prenom,
+          phone,
+          parkings: parkings.map(p => ({
+            id_parking: p.id_parking,
+            nom: p.nom,
+            adresse: p.adresse
+          }))
+        }
+      });
+    } catch (error) {
+      console.error('❌ Create gestionnaire error:', error.message);
+
+      // Clean up Keycloak user if DB creation failed
+      if (error.response?.status === 201 && error.keycloak_id) {
+        try {
+          await keycloakService.adminAPI.users.del({
+            realm: process.env.KEYCLOAK_REALM,
+            id: error.keycloak_id
+          });
+        } catch (cleanupError) {
+          console.error('⚠️ Cleanup error:', cleanupError.message);
+        }
+      }
+
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la création du gestionnaire',
+        code: 'CREATION_ERROR'
+      });
+    }
+  }
+};
+
+module.exports = KeycloakAuthController;

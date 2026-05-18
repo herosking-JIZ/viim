@@ -6,6 +6,7 @@ import { AppLayout } from '@/layouts/AppLayout'
 
 // Pages auth (publiques)
 import Login from '@/pages/Login'
+import VerifySMS from '@/pages/VerifySMS'
 import ForgotPassword from '@/pages/auth/ForgotPassword'
 import ResetPassword from '@/pages/auth/ResetPassword'
 import NotFound from '@/pages/NotFound'
@@ -19,6 +20,7 @@ import Finance from '@/pages/admin/Finance'
 import Parkings from '@/pages/admin/Parkings'
 import Support from '@/pages/admin/Support'
 import Config from '@/pages/admin/Config'
+import Gestionnaires from '@/pages/admin/Gestionnaires'
 
 // Pages gestionnaire
 import ParkeurDashboard from '@/pages/parkeur/ParkeurDashboard'
@@ -64,6 +66,7 @@ function AppRoutes() {
     <Routes>
       {/* ── Routes publiques (sans layout) ─────────────────── */}
       <Route path="/login" element={<Login />} />
+      <Route path="/verify-sms" element={<VerifySMS />} />
       <Route path="/auth/forgot-password" element={<ForgotPassword />} />
       {/* Le backend envoie un lien du type /auth/reset-password?token=XXXX */}
       <Route path="/auth/reset-password" element={<ResetPassword />} />
@@ -114,6 +117,10 @@ function AppRoutes() {
         <Route
           path="configuration"
           element={<ProtectedRoute adminOnly><Config /></ProtectedRoute>}
+        />
+        <Route
+          path="gestionnaires"
+          element={<ProtectedRoute adminOnly><Gestionnaires /></ProtectedRoute>}
         />
       </Route>
 

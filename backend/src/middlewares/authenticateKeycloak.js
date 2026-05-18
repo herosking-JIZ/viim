@@ -4,10 +4,11 @@
 
 const jwt = require('jsonwebtoken');
 const { prisma } = require('../config/db');
+const { redis } = require('../config/redis');
 
 /**
  * Middleware d'authentification Keycloak
- * Vérifie le token Bearer et attache l'utilisateur à req.user
+ * Vérifie le token Bearer, la blacklist, et attache l'utilisateur à req.user
  */
 const authenticateKeycloak = async (req, res, next) => {
   try {
@@ -45,7 +46,18 @@ const authenticateKeycloak = async (req, res, next) => {
       });
     }
 
-    // 4. Chercher ou créer l'utilisateur en base de données
+    // 4. Vérifier si le token est dans la blacklist (logout)
+    const jti = payload.jti || payload.sub;
+    const isBlacklisted = await redis.exists(`blacklist:${jti}`);
+    if (isBlacklisted) {
+      return res.status(401).json({
+        success: false,
+        message: 'Token révoqué. Reconnectez-vous.',
+        code: 'TOKEN_REVOKED'
+      });
+    }
+
+    // 5. Chercher ou créer l'utilisateur en base de données
     let user = await prisma.utilisateur.findUnique({
       where: { keycloak_id: payload.sub },
       include: {
@@ -64,11 +76,11 @@ const authenticateKeycloak = async (req, res, next) => {
           prenom: payload.given_name || '',
           nom: payload.family_name || '',
           numero_telephone: null,
-          mot_de_passe_hash: 'KEYCLOAK_AUTH', // Dummy, ne pas utiliser
+          mot_de_passe_hash: 'KEYCLOAK_AUTH',
           auth_provider: 'keycloak',
           utilisateur_role: {
             create: {
-              role: 'passager', // Rôle par défaut
+              role: 'passager',
               actif: true
             }
           }
@@ -79,7 +91,7 @@ const authenticateKeycloak = async (req, res, next) => {
       });
     }
 
-    // 5. Vérifier si l'utilisateur est bloqué
+    // 6. Vérifier si l'utilisateur est bloqué
     if (user.bloque_jusqu_au && user.bloque_jusqu_au > new Date()) {
       return res.status(401).json({
         success: false,
@@ -88,14 +100,14 @@ const authenticateKeycloak = async (req, res, next) => {
       });
     }
 
-    // 6. Extraire les rôles depuis Keycloak ou depuis la base de données
+    // 7. Extraire les rôles depuis Keycloak ou depuis la base de données
     const keycloakRoles = payload.realm_access?.roles || [];
     const dbRoles = user.utilisateur_role?.map(r => r.role) || [];
 
     // Fusionner les rôles (priorité à ceux de Keycloak)
     const roles = [...new Set([...keycloakRoles, ...dbRoles])];
 
-    // 7. Attacher l'utilisateur à la requête
+    // 8. Attacher l'utilisateur à la requête
     const { mot_de_passe_hash, reset_token, reset_token_expire, ...userSafe } = user;
 
     req.user = {

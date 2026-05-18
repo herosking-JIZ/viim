@@ -12,6 +12,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker-init/init-databases.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - ndjigi-network
     healthcheck:
@@ -27,9 +28,9 @@ services:
     container_name: ndjigi-keycloak
     environment:
       KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: NDJIGI@2026
+      KEYCLOAK_ADMIN_PASSWORD: Admin123456
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/ndjigi_db
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak_db
       KC_DB_USERNAME: ndjigi_user
       KC_DB_PASSWORD: "1234567890"
       KC_HOSTNAME_STRICT: false
@@ -61,7 +62,7 @@ services:
       KEYCLOAK_URL: http://keycloak:8080
       KEYCLOAK_REALM: ndjigi
       KEYCLOAK_CLIENT_ID: ndjigi-backend
-      KEYCLOAK_CLIENT_SECRET: G86nsu5BwsbS5no2HB76HWuTmprCorte
+      KEYCLOAK_CLIENT_SECRET: q0SSD0S6HFdjgTeP7mhvIjqaNAH2gmgC
 
       # JWT Configuration (rétrocompatibilité)
       JWT_SECRET: change_this_secret_key
@@ -71,6 +72,9 @@ services:
 
       # CORS
       CORS_ORIGIN: http://localhost:3000,http://localhost:8081,http://web:3000
+
+      # Redis (Phase 0+)
+      REDIS_URL: redis://redis:6379
     ports:
       - "8000:8000"
     depends_on:
@@ -78,6 +82,8 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_started
+      redis:
+        condition: service_healthy
     volumes:
       - ./backend:/app
       - /app/node_modules
@@ -105,8 +111,27 @@ services:
       - ndjigi-network
     restart: unless-stopped
 
+  # Redis for token blacklist, rate limiting, OTP codes
+  redis:
+    image: redis:7-alpine
+    container_name: ndjigi-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - ndjigi-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+    driver: local
+  redis_data:
     driver: local
 
 networks:

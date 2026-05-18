@@ -1,40 +1,86 @@
 /**
- * CONFIG/KEYCLOAK.JS — Configuration Keycloak
+ * Configuration Keycloak
+ * Utilisé pour : validation tokens via JWKS
+ *
+ * Usage:
+ *   const { verifyKeycloakToken, getJwksClient } = require('./keycloak');
+ *   const verified = await verifyKeycloakToken(token);
  */
 
-require('dotenv').config();
+const jwksClient = require('jwks-rsa');
+const jwt = require('jsonwebtoken');
 
-const keycloakConfig = {
-  realm: process.env.KEYCLOAK_REALM || 'ndjigi',
-  'bearer-only': true,
-  'auth-server-url': process.env.KEYCLOAK_URL || 'http://localhost:8080',
-  'ssl-required': process.env.NODE_ENV === 'production' ? 'all' : 'none',
-  resource: process.env.KEYCLOAK_CLIENT_ID || 'ndjigi-backend',
-  'public-client': false,
-  credentials: {
-    secret: process.env.KEYCLOAK_CLIENT_SECRET || 'your-client-secret'
-  }
-};
+// ─── Constantes ───
+const KEYCLOAK_URL = process.env.KEYCLOAK_URL || 'http://localhost:8080';
+const KEYCLOAK_REALM = process.env.KEYCLOAK_REALM || 'ndjigi';
+const KEYCLOAK_CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID || 'ndjigi-backend';
+const KEYCLOAK_CLIENT_SECRET = process.env.KEYCLOAK_CLIENT_SECRET;
+
+// ─── JWKS Client (pour validation tokens) ───
+let kcJwksClient = null;
 
 /**
- * Valide que la configuration Keycloak est présente
+ * Récupère le client JWKS pour valider les tokens Keycloak (singleton)
  */
-function validateKeycloakConfig() {
-  const required = [
-    'KEYCLOAK_URL',
-    'KEYCLOAK_REALM',
-    'KEYCLOAK_CLIENT_ID',
-    'KEYCLOAK_CLIENT_SECRET'
-  ];
+function getJwksClient() {
+  if (kcJwksClient) return kcJwksClient;
 
-  const missing = required.filter(key => !process.env[key]);
+  const jwksUri = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/certs`;
 
-  if (missing.length > 0) {
-    console.warn(`⚠️  Variables Keycloak manquantes : ${missing.join(', ')}`);
-    console.warn('Les routes protégées par Keycloak peuvent ne pas fonctionner.');
+  kcJwksClient = jwksClient({
+    jwksUri,
+    cache: true,
+    cacheMaxEntries: 10,
+    cacheMaxAge: 3600000, // 1 hour
+  });
+
+  console.log(`✅ JWKS Client créé`);
+  return kcJwksClient;
+}
+
+/**
+ * Valide et décode un token Keycloak
+ * Vérifie : signature RS256, expiration, issuer
+ *
+ * @param {string} token - JWT Keycloak Bearer token
+ * @returns {object} - Payload du token vérifié
+ * @throws {Error} - Si le token est invalide
+ */
+async function verifyKeycloakToken(token) {
+  try {
+    const decoded = jwt.decode(token, { complete: true });
+
+    if (!decoded) {
+      throw new Error('Token non décodable');
+    }
+
+    const { header, payload } = decoded;
+
+    if (!header.kid) {
+      throw new Error('header.kid manquant');
+    }
+
+    // Récupérer la clé publique via JWKS
+    const key = await getJwksClient().getSigningKey(header.kid);
+    const publicKey = key.getPublicKey();
+
+    // Vérifier la signature et l'expiration
+    const verified = jwt.verify(token, publicKey, {
+      algorithms: ['RS256'],
+      issuer: `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}`,
+    });
+
+    return verified;
+  } catch (err) {
+    const errorMessage = err.message || 'Erreur inconnue';
+    throw new Error(`Token Keycloak invalide: ${errorMessage}`);
   }
 }
 
-validateKeycloakConfig();
-
-module.exports = { keycloakConfig };
+module.exports = {
+  getJwksClient,
+  verifyKeycloakToken,
+  KEYCLOAK_URL,
+  KEYCLOAK_REALM,
+  KEYCLOAK_CLIENT_ID,
+};

@@ -1,5 +1,5 @@
 # Stage 1: Builder
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 
 # Installer les dépendances de build
@@ -9,7 +9,7 @@ RUN apk add --no-cache python3 make g++
 COPY package*.json ./
 
 # Installer les dépendances
-RUN npm ci
+RUN npm install --legacy-peer-deps
 
 # Copier le reste du code
 COPY . .
@@ -18,7 +18,7 @@ COPY . .
 RUN npx prisma generate
 
 # Stage 2: Runtime
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 
 # Installer dumb-init pour gérer les signaux Unix

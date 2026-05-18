@@ -6,6 +6,7 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const { connectDB, disconnectDB } = require('./src/config/db');
 const route = require('./src/routes/index');
+const requestLogger = require('./src/middlewares/requestLogger');
 
 const app = express();
 app.set('etag', false)
@@ -33,6 +34,9 @@ app.use(limiter);
 // --- PARSING ---
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// --- LOGGING DES REQUÊTES/RÉPONSES ---
+app.use(requestLogger);
 
 
 

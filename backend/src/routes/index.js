@@ -1,5 +1,5 @@
 const express = require('express');
-const authRoute = require('./authRoute');
+const keycloakAuthRoutes = require('./keycloakAuthRoutes');
 const trajetRoute = require('./trajetRoute');
 const vehiculeRoute = require('./vehiculeRoute');
 const parkingRoute = require('./parkingRoute');
@@ -23,18 +23,18 @@ const zoneRoutes = require('./zoneTarifaireRoute');
 const categorieRoutes = require('./categorieVehiculeRoute');
 const tarifRoutes = require('./tarifCategorieZoneRoute');
 
-const { dualAuthenticate } = require('../middlewares/dualAuth');
-
-
+const { authenticateKeycloak } = require('../middlewares/authenticateKeycloak');
 
 console.log('Chargement des routes...');
 
 const router = express.Router();
 
-router.use('/auth', authRoute);
+// ✨ Phase 4: Routes Keycloak uniquement
+// Enregistrées en PREMIER pour authentification
+router.use('/auth', keycloakAuthRoutes);
 
-// Appliquer l'authentification dual à toutes les autres routes
-router.use(dualAuthenticate);
+// Appliquer l'authentification Keycloak à toutes les autres routes
+router.use(authenticateKeycloak);
 
 router.use('/trajets', trajetRoute);
 router.use('/vehicules', vehiculeRoute);

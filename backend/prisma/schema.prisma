@@ -229,21 +229,6 @@ model reservation {
   trajet               trajet   @relation(fields: [id_trajet], references: [id_trajet], onDelete: NoAction, onUpdate: NoAction)
 }
 
-model session {
-  id_session      String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  id_utilisateur  String      @db.Uuid
-  refresh_token   String      @unique
-  date_expiration DateTime    @db.Timestamp(6)
-  est_valide      Boolean?    @default(true)
-  adresse_ip      String?     @db.VarChar(45)
-  appareil_id     String?     @db.VarChar(255)
-  appareil_nom    String?     @db.VarChar(100)
-  date_creation   DateTime?   @default(now()) @db.Timestamp(6)
-  utilisateur     utilisateur @relation(fields: [id_utilisateur], references: [id_utilisateur], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([id_utilisateur], map: "idx_session_utilisateur")
-}
-
 model tracking_vehicule {
   id_tracking String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   id_vehicule String   @db.Uuid
@@ -289,7 +274,9 @@ model trajet {
 
 model utilisateur {
   id_utilisateur                       String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  keycloak_id                          String?               @unique @db.Uuid
   numero_telephone                     String                @unique @db.VarChar(20)
+  phone                                String?               @unique @db.VarChar(20)
   email                                String                @unique @db.VarChar(255)
   nom                                  String                @db.VarChar(100)
   prenom                               String                @db.VarChar(100)
@@ -307,6 +294,12 @@ model utilisateur {
   deux_fa_activee                      Boolean               @default(false)
   reset_token                          String?               @db.Uuid
   reset_token_expire                   DateTime?             @db.Timestamp(6)
+  active_role                          String?               @db.VarChar(20)
+  /// OTP Auth (Phase 5): Technical password encrypted with AES-256-GCM
+  /// Format: "iv:encryptedData:authTag" (hex)
+  tech_password_encrypted              String?               @db.Text
+  /// User authenticated via OTP SMS
+  auth_method_otp                      Boolean               @default(false)
   ticket                ticket[]
   ticket_assigne        ticket[]        @relation("ticket_agent")
   remboursement         remboursement[]
@@ -323,7 +316,6 @@ model utilisateur {
   passager                             passager?
   portefeuille                         portefeuille?
   proprietaire                         proprietaire?
-  session                              session[]
   utilisateur_role                     utilisateur_role[]
   utilisation_promo                    utilisation_promo[]
 }
@@ -490,4 +482,19 @@ model remboursement {
 
   @@index([id_ticket], map: "idx_remboursement_ticket")
   @@index([id_utilisateur], map: "idx_remboursement_utilisateur")
+}
+
+model auth_log {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id       String?  @db.Uuid
+  event_type    String   @db.VarChar(50)
+  channel       String?  @db.VarChar(20)
+  ip_address    String?  @db.VarChar(45)
+  user_agent    String?
+  metadata      Json?
+  created_at    DateTime @default(now()) @db.Timestamp(6)
+
+  @@index([user_id], map: "idx_auth_log_user")
+  @@index([event_type], map: "idx_auth_log_event_type")
+  @@index([created_at], map: "idx_auth_log_created_at")
 }

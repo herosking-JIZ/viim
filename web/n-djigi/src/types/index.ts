@@ -76,6 +76,25 @@ export interface LoginResponseData {
   tokens: BackendTokens
 }
 
+// Réponse Keycloak login (Phase 1+)
+export interface KeycloakLoginResponse {
+  access_token: string
+  refresh_token: string
+  expires_in: number
+  token_type: string
+  user: {
+    id_utilisateur: string
+    keycloak_id: string
+    email: string
+    nom: string
+    prenom: string
+    numero_telephone: string
+    photo_profil: string | null
+    roles: UserRole[]
+    auth_provider: string
+  }
+}
+
 // Ce que le frontend stocke en mémoire/localStorage pour l'utilisateur connecté
 export interface AuthUser {
   id_utilisateur: string
