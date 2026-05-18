@@ -94,6 +94,117 @@ const EmailService = {
   },
 
   /**
+   * Send user invitation email (generic for all roles)
+   * @param {string} email - Recipient email
+   * @param {Object} data - Template data
+   *   - nom: string
+   *   - prenom: string
+   *   - role: string
+   *   - tempPassword: string
+   *   - appUrl: string
+   */
+  async sendUserInvitation(email, data) {
+    try {
+      const appUrl = data.appUrl || process.env.APP_URL || 'http://localhost:3000';
+      const roleLabels = {
+        'admin': 'Administrateur',
+        'gestionnaire': 'Gestionnaire de Parking',
+        'passager': 'Passager',
+        'chauffeur': 'Chauffeur',
+        'proprietaire': 'Propriétaire'
+      };
+
+      const roleLabel = roleLabels[data.role] || data.role;
+      const parkingInfo = data.parkingName ? `\n\nParking assigné: ${data.parkingName}` : '';
+
+      const subject = `Invitation N'DJIGI - Compte ${roleLabel}`;
+
+      const textContent = `
+Bienvenue sur N'DJIGI!
+
+Bonjour ${data.prenom} ${data.nom},
+
+Votre compte ${roleLabel} a été créé avec succès.
+
+Email: ${email}
+Mot de passe temporaire: ${data.tempPassword}
+Rôle: ${roleLabel}${parkingInfo}
+
+Pour vous connecter:
+1. Allez sur ${appUrl}/login
+2. Entrez votre email et mot de passe temporaire
+3. Changez votre mot de passe lors de la première connexion
+
+Support: +226 67 68 98 89 (WhatsApp)
+
+Cordialement,
+L'équipe N'DJIGI
+`;
+
+      const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background-color: #007bff; color: white; padding: 20px; text-align: center; border-radius: 5px; }
+    .content { padding: 20px; background-color: #f9f9f9; border: 1px solid #ddd; border-radius: 5px; margin-top: 20px; }
+    .credentials { background-color: #fff3cd; padding: 15px; border-radius: 5px; margin: 15px 0; font-family: monospace; }
+    .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Bienvenue sur N'DJIGI!</h1>
+    </div>
+    <div class="content">
+      <p>Bonjour <strong>${data.prenom} ${data.nom}</strong>,</p>
+      <p>Votre compte <strong>${roleLabel}</strong> a été créé avec succès.</p>
+
+      <div class="credentials">
+        <p><strong>Email:</strong> ${email}</p>
+        <p><strong>Mot de passe temporaire:</strong> ${data.tempPassword}</p>
+        <p><strong>Rôle:</strong> ${roleLabel}</p>
+        ${data.parkingName ? `<p><strong>Parking:</strong> ${data.parkingName}</p>` : ''}
+      </div>
+
+      <h3>Prochaines étapes:</h3>
+      <ol>
+        <li>Visitez <a href="${appUrl}/login">${appUrl}/login</a></li>
+        <li>Connectez-vous avec votre email et mot de passe temporaire</li>
+        <li>Changez votre mot de passe lors de la première connexion</li>
+      </ol>
+
+      <p><strong>Support:</strong> +226 67 68 98 89 (WhatsApp)</p>
+    </div>
+    <div class="footer">
+      <p>© 2026 N'DJIGI. Tous droits réservés.</p>
+    </div>
+  </div>
+</body>
+</html>
+`;
+
+      const result = await transporter.sendMail({
+        from: `N'DJIGI <${process.env.SMTP_USER}>`,
+        to: email,
+        subject: subject,
+        text: textContent,
+        html: htmlContent,
+      });
+
+      console.log(`✅ User invitation email sent to ${email} (${data.role})`);
+      return result;
+    } catch (error) {
+      console.error('❌ Invitation email send error:', error);
+      throw new Error(`Failed to send invitation email: ${error.message}`);
+    }
+  },
+
+  /**
    * Test email sending (dev only)
    */
   async sendTest(email) {

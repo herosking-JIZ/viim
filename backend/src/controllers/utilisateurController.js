@@ -632,12 +632,14 @@ const UtilisateurController = {
   // POST /api/utilisateurs
   // Créer un nouvel utilisateur (IT/Admin seulement)
   // IT: peut créer passager, chauffeur, proprietaire
-  // Admin: peut créer gestionnaire + les rôles finaux
+  // Admin: peut créer gestionnaire, admin + les rôles finaux
   // ──────────────────────────────────────────────────────────
   async create(req, res) {
     try {
-      const { email, nom, prenom, role, numero_telephone, mot_de_passe } = req.body;
+      const { email, nom, prenom, role, numero_telephone, parking_id } = req.body;
       const creatorRoles = req.user.utilisateur_role.map(r => r.role);
+      const keycloakService = require('../services/keycloakService');
+      const crypto = require('crypto');
 
       // Validation des champs obligatoires
       if (!email || !nom || !prenom || !role || !numero_telephone) {
@@ -646,6 +648,16 @@ const UtilisateurController = {
           message: 'Champs obligatoires manquants: email, nom, prenom, role, numero_telephone.',
           data: null,
           errors: { code: 'MISSING_FIELDS' }
+        });
+      }
+
+      // Gestionnaire requiert un parking
+      if (role === 'gestionnaire' && !parking_id) {
+        return res.status(400).json({
+          success: false,
+          message: 'Un parking doit être assigné au gestionnaire.',
+          data: null,
+          errors: { code: 'MISSING_PARKING' }
         });
       }
 
@@ -680,11 +692,11 @@ const UtilisateurController = {
         });
       }
 
-      // Vérifier que l'email n'existe pas déjà
-      const existingEmail = await prisma.utilisateur.findUnique({
+      // Vérifier que l'email n'existe pas déjà en BD locale
+      const existingLocalEmail = await prisma.utilisateur.findUnique({
         where: { email }
       });
-      if (existingEmail) {
+      if (existingLocalEmail) {
         return res.status(409).json({
           success: false,
           message: 'Un compte avec cet email existe déjà.',
@@ -693,35 +705,118 @@ const UtilisateurController = {
         });
       }
 
-      // Vérifier que le numéro de téléphone n'existe pas déjà
-      const existingPhone = await prisma.utilisateur.findUnique({
-        where: { numero_telephone }
-      });
-      if (existingPhone) {
-        return res.status(409).json({
+      // Vérifier que l'email n'existe pas dans Keycloak
+      try {
+        const kcUsers = await keycloakService.adminAPI.users.find({
+          realm: process.env.KEYCLOAK_REALM,
+          email: email,
+          exact: true
+        });
+        if (kcUsers.length > 0) {
+          return res.status(409).json({
+            success: false,
+            message: 'Un compte avec cet email existe déjà dans Keycloak.',
+            data: null,
+            errors: { field: 'email', code: 'DUPLICATE_EMAIL_KC' }
+          });
+        }
+      } catch (kcError) {
+        console.warn('⚠️ Could not check Keycloak for duplicate email:', kcError.message);
+      }
+
+      // Vérifier le parking si spécifié
+      if (parking_id) {
+        const parking = await prisma.parking.findUnique({
+          where: { id_parking: parking_id }
+        });
+        if (!parking) {
+          return res.status(400).json({
+            success: false,
+            message: 'Le parking spécifié n\'existe pas.',
+            data: null,
+            errors: { field: 'parking_id', code: 'INVALID_PARKING' }
+          });
+        }
+      }
+
+      // Générer mot de passe temporaire
+      const tempPassword = crypto.randomBytes(6).toString('hex').substring(0, 12);
+
+      // Mapper le rôle pour Keycloak
+      const roleMapping = {
+        'admin': 'ndjigi-admin',
+        'gestionnaire': 'ndjigi-gestionnaire',
+        'passager': 'ndjigi-passager',
+        'chauffeur': 'ndjigi-chauffeur',
+        'proprietaire': 'ndjigi-proprietaire'
+      };
+      const kcRoleName = roleMapping[role] || role;
+
+      // 1️⃣ Créer dans Keycloak
+      let keycloak_id;
+      try {
+        const kcUser = await keycloakService.adminAPI.users.create({
+          realm: process.env.KEYCLOAK_REALM,
+          body: {
+            email: email,
+            emailVerified: false,
+            firstName: prenom,
+            lastName: nom,
+            enabled: true,
+            attributes: {
+              phone: numero_telephone
+            },
+            requiredActions: ['UPDATE_PASSWORD'],
+            credentials: [
+              {
+                type: 'password',
+                value: tempPassword,
+                temporary: true
+              }
+            ]
+          }
+        });
+        keycloak_id = kcUser.id;
+        console.log(`✅ Keycloak user created: ${keycloak_id}`);
+      } catch (kcCreateError) {
+        console.error('❌ Keycloak user creation error:', kcCreateError.message);
+        return res.status(500).json({
           success: false,
-          message: 'Ce numéro de téléphone est déjà utilisé.',
+          message: 'Erreur lors de la création du compte dans Keycloak.',
           data: null,
-          errors: { field: 'numero_telephone', code: 'DUPLICATE_PHONE' }
+          errors: kcCreateError.message
         });
       }
 
-      // Hash du mot de passe s'il est fourni, sinon générer un mot de passe temporaire
-      let mot_de_passe_hash = '';
-      if (mot_de_passe) {
-        mot_de_passe_hash = await bcrypt.hash(mot_de_passe, 12);
+      // 2️⃣ Assigner le rôle dans Keycloak
+      try {
+        const kcRole = await keycloakService.adminAPI.roles.findOneByName({
+          realm: process.env.KEYCLOAK_REALM,
+          name: kcRoleName
+        });
+
+        if (kcRole) {
+          await keycloakService.adminAPI.users.addRealmRoleMappings({
+            realm: process.env.KEYCLOAK_REALM,
+            id: keycloak_id,
+            roles: [kcRole]
+          });
+          console.log(`✅ Keycloak role assigned: ${kcRoleName}`);
+        }
+      } catch (kcRoleError) {
+        console.warn(`⚠️ Could not assign Keycloak role ${kcRoleName}:`, kcRoleError.message);
       }
 
-      // Créer l'utilisateur en base de données
+      // 3️⃣ Créer en BD locale
       const newUser = await prisma.$transaction(async (tx) => {
         const user = await tx.utilisateur.create({
           data: {
+            keycloak_id,
             email,
             nom,
             prenom,
             numero_telephone,
-            mot_de_passe_hash,
-            auth_provider: 'local',
+            auth_provider: 'keycloak',
             statut_compte: 'actif',
             utilisateur_role: {
               create: {
@@ -755,6 +850,15 @@ const UtilisateurController = {
             data: { id_proprietaire: user.id_utilisateur }
           });
         }
+        if (role === 'gestionnaire' && parking_id) {
+          await tx.gestionnaire_parking.create({
+            data: {
+              id_gestionnaire: user.id_utilisateur,
+              id_parking: parking_id,
+              date_prise_poste: new Date()
+            }
+          });
+        }
 
         // Créer le portefeuille
         await tx.portefeuille.create({
@@ -764,14 +868,33 @@ const UtilisateurController = {
         return user;
       });
 
-      // Log de création
+      // 4️⃣ Envoyer email d'invitation
+      try {
+        const emailService = require('../services/emailService');
+        const appUrl = process.env.APP_URL || 'http://localhost:3000';
+
+        await emailService.sendUserInvitation(email, {
+          nom,
+          prenom,
+          role,
+          tempPassword,
+          appUrl,
+          parkingName: parking_id ? `(Parking assigné: ${parking_id})` : ''
+        });
+        console.log(`✅ Invitation email sent to ${email}`);
+      } catch (emailError) {
+        console.warn(`⚠️ Could not send invitation email to ${email}:`, emailError.message);
+        // Don't fail the request if email fails
+      }
+
       console.log(`✅ User created: ${newUser.id_utilisateur}, role: ${role}, by: ${req.user.id_utilisateur}`);
 
       return res.status(201).json({
         success: true,
-        message: `Utilisateur créé avec succès avec le rôle "${role}".`,
+        message: `Utilisateur créé avec succès. Un email d'invitation a été envoyé à ${email}.`,
         data: {
           id_utilisateur: newUser.id_utilisateur,
+          keycloak_id: keycloak_id,
           email: newUser.email,
           nom: newUser.nom,
           prenom: newUser.prenom,
