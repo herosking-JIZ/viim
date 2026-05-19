@@ -61,4 +61,4 @@ const joiValidate = (schemas) => {
   };
 };
 
-module.exports =  joiValidate ;
+module.exports = { joiValidate };
