@@ -6,7 +6,7 @@ import type {
   Document, DocumentStatus,
   Trajet,
   Transaction, FinanceKpis, Wallet, DepotPayload,
-  Parking, VehiculeParking, MouvementParking,
+  Parking, CreateParkingPayload, VehiculeParking, MouvementParking,
   ZoneTarifaire, CategorieVehicule, CodePromo,  TarifCategorieZone,
   AdminKpis, ChartDataPoint, TopChauffeur,
   Ticket,
@@ -389,6 +389,21 @@ export const parkingsService = {
   list: async (): Promise<Parking[]> => {
     if (IS_DEMO) { await delay(); return _parkings }
     const { data } = await api.get<ApiResponse<Parking[]>>('/parkings')
+    return extractData(data)
+  },
+  create: async (payload: CreateParkingPayload): Promise<Parking> => {
+    if (IS_DEMO) {
+      await delay()
+      const newParking: Parking = {
+        id_parking: Math.random().toString(36).slice(2),
+        ...payload,
+        capacite_occupee: 0,
+        actif: true,
+      }
+      _parkings.push(newParking)
+      return newParking
+    }
+    const { data } = await api.post<ApiResponse<Parking>>('/parkings', payload)
     return extractData(data)
   },
   update: async (id: string, payload: Partial<Parking>): Promise<Parking> => {

@@ -1,12 +1,299 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Pencil, ParkingCircle, Car, Activity } from 'lucide-react'
+import { Search, Pencil, Plus, ParkingCircle, Car, Activity, X, AlertCircle, Loader2, MapPin } from 'lucide-react'
 import { parkingsService } from '@/services/api'
 import { KpiCard } from '@/components/KpiCard'
 import { StatusBadge } from '@/components/StatusBadge'
 import { useToast } from '@/hooks/useToast'
 import { formatDate } from '@/lib/utils'
-import type { Parking, MouvementParking } from '@/types'
+import type { Parking, MouvementParking, CreateParkingPayload } from '@/types'
 
+// Leaflet imports
+import L from 'leaflet'
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
+import 'leaflet/dist/leaflet.css'
+
+// Fix Leaflet marker icons
+import markerIcon from 'leaflet/dist/images/marker-icon.png'
+import markerShadow from 'leaflet/dist/images/marker-shadow.png'
+
+delete (L.Icon.Default.prototype as any)._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+})
+
+// ─── Composant interne: Map avec clic pour placer le marqueur ──
+interface MapClickerProps {
+  onMarkerMove: (lat: number, lng: number) => void
+  markerPosition: { lat: number; lng: number } | null
+}
+
+function MapClicker({ onMarkerMove, markerPosition }: MapClickerProps) {
+  useMapEvents({
+    click(e: L.LeafletMouseEvent) {
+      onMarkerMove(e.latlng.lat, e.latlng.lng)
+    },
+  })
+  return markerPosition ? <Marker position={[markerPosition.lat, markerPosition.lng]} draggable={true} eventHandlers={{ dragend: (e) => { const latlng = (e.target as any).getLatLng(); onMarkerMove(latlng.lat, latlng.lng) } }} /> : null
+}
+
+// ─── Modal Créer Parking ──────────────────────────────────────
+interface CreateParkingModalProps {
+  onClose: () => void
+  onCreated: () => void
+}
+
+function CreateParkingModal({ onClose, onCreated }: CreateParkingModalProps) {
+  const { toast } = useToast()
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [searchAddress, setSearchAddress] = useState('')
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [form, setForm] = useState<CreateParkingPayload>({
+    nom: '',
+    adresse: '',
+    ville: 'Ouagadougou',
+    capacite_totale: 0,
+    latitude: 12.3714,
+    longitude: -1.5197,
+    horaires: '',
+  })
+  const [markerPosition, setMarkerPosition] = useState<{ lat: number; lng: number } | null>({
+    lat: form.latitude,
+    lng: form.longitude,
+  })
+
+  const set = (field: keyof CreateParkingPayload) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+      const value = field === 'capacite_totale' ? Number(e.target.value) : e.target.value
+      setForm((f) => ({ ...f, [field]: value }))
+    }
+
+  const handleMarkerMove = (lat: number, lng: number) => {
+    setForm((f) => ({ ...f, latitude: lat, longitude: lng }))
+    setMarkerPosition({ lat, lng })
+  }
+
+  // Recherche d'adresse via Nominatim
+  const handleSearchAddress = async () => {
+    if (!searchAddress.trim()) return
+
+    setSearchLoading(true)
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchAddress)}&limit=1`
+      )
+      const results = await response.json()
+
+      if (results.length > 0) {
+        const { lat, lon, address } = results[0]
+        const latNum = parseFloat(lat)
+        const lonNum = parseFloat(lon)
+
+        setForm((f) => ({
+          ...f,
+          latitude: latNum,
+          longitude: lonNum,
+          adresse: form.adresse || (address as any).road || (address as any).suburb || (address as any).town || '',
+          ville: form.ville || (address as any).city || (address as any).town || 'Ouagadougou',
+        }))
+        setMarkerPosition({ lat: latNum, lng: lonNum })
+        toast({ title: 'Adresse trouvée', description: `${(address as any).road || ''} ${(address as any).town || ''}`, variant: 'success' })
+      } else {
+        toast({ title: 'Adresse non trouvée', description: 'Veuillez affiner votre recherche', variant: 'destructive' })
+      }
+    } catch (err) {
+      console.error('Erreur Nominatim:', err)
+      toast({ title: 'Erreur', description: 'Impossible de rechercher l\'adresse', variant: 'destructive' })
+    } finally {
+      setSearchLoading(false)
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+
+    // Validation
+    if (!form.nom || !form.adresse || !form.ville || !form.capacite_totale) {
+      setError('Tous les champs obligatoires doivent être remplis.')
+      return
+    }
+    if (form.latitude === null || form.longitude === null) {
+      setError('Veuillez sélectionner une localisation sur la carte.')
+      return
+    }
+
+    setLoading(true)
+    try {
+      await parkingsService.create(form)
+      toast({ title: 'Parking créé', description: `${form.nom} a été créé avec succès.`, variant: 'success' })
+      onCreated()
+      onClose()
+    } catch (err: any) {
+      setError(err?.message || 'Impossible de créer le parking.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+      <div
+        className="bg-card border border-border rounded-2xl p-6 w-full max-w-2xl shadow-2xl animate-fade-in overflow-y-auto max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="font-display font-bold text-lg">Créer un parking</h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {error && (
+          <div className="mb-4 flex items-center gap-2 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive px-4 py-3 text-sm">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Informations basiques */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Informations</h3>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Nom du parking <span className="text-destructive">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.nom}
+                onChange={set('nom')}
+                placeholder="Parking Central Ouaga"
+                className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Adresse <span className="text-destructive">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.adresse}
+                onChange={set('adresse')}
+                placeholder="Zogona"
+                className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Ville <span className="text-destructive">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={form.ville}
+                  onChange={set('ville')}
+                  className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Capacité <span className="text-destructive">*</span>
+                </label>
+                <input
+                  type="number"
+                  value={form.capacite_totale}
+                  onChange={set('capacite_totale')}
+                  min="1"
+                  placeholder="50"
+                  className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Horaires <span className="text-muted-foreground font-normal">(optionnel)</span>
+              </label>
+              <input
+                type="text"
+                value={form.horaires}
+                onChange={set('horaires')}
+                placeholder="7h - 22h tous les jours"
+                className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+          </div>
+
+          {/* Localisation sur carte */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Localisation</h3>
+
+            {/* Barre de recherche d'adresse Nominatim */}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={searchAddress}
+                onChange={(e) => setSearchAddress(e.target.value)}
+                placeholder="Rechercher une adresse..."
+                onKeyDown={(e) => e.key === 'Enter' && handleSearchAddress()}
+                className="flex-1 rounded-xl border border-input bg-background px-3.5 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50"
+              />
+              <button
+                type="button"
+                onClick={handleSearchAddress}
+                disabled={searchLoading || !searchAddress.trim()}
+                className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60 flex items-center gap-2"
+              >
+                {searchLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                {searchLoading ? 'Recherche...' : 'Chercher'}
+              </button>
+            </div>
+
+            {/* Carte Leaflet */}
+            <div className="rounded-2xl overflow-hidden border border-border h-80 bg-muted">
+              <MapContainer center={[form.latitude, form.longitude]} zoom={13} style={{ height: '100%', width: '100%' }}>
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap' />
+                <MapClicker onMarkerMove={handleMarkerMove} markerPosition={markerPosition} />
+              </MapContainer>
+            </div>
+
+            {/* Affichage lecture seule des coordonnées */}
+            {markerPosition && (
+              <div className="flex gap-2 text-xs text-muted-foreground bg-muted/50 px-3 py-2 rounded-lg">
+                <MapPin className="h-3 w-3 flex-shrink-0 mt-0.5" />
+                <span>
+                  <strong>Latitude:</strong> {markerPosition.lat.toFixed(6)} — <strong>Longitude:</strong> {markerPosition.lng.toFixed(6)}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-2 justify-end">
+            <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl border border-border hover:bg-muted text-sm">
+              Annuler
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-5 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium flex items-center gap-2 hover:bg-primary/90 disabled:opacity-60"
+            >
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {loading ? 'Création...' : 'Créer le parking'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ─── Page Parkings ────────────────────────────────────────────
 export default function Parkings() {
   const { toast } = useToast()
   const [parkings, setParkings] = useState<Parking[]>([])
@@ -15,6 +302,7 @@ export default function Parkings() {
   const [search, setSearch] = useState('')
   const [editTarget, setEditTarget] = useState<Parking | null>(null)
   const [editForm, setEditForm] = useState<Partial<Parking>>({})
+  const [showCreate, setShowCreate] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -32,7 +320,9 @@ export default function Parkings() {
     }
   }, [search])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+  }, [load])
 
   const handleEdit = (p: Parking) => {
     setEditTarget(p)
@@ -57,9 +347,18 @@ export default function Parkings() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-display font-bold">Parkings</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Réseau de parkings N'DJIGI</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-display font-bold">Parkings</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Réseau de parkings N'DJIGI</p>
+        </div>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
+        >
+          <Plus className="h-4 w-4" />
+          Créer un parking
+        </button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -195,6 +494,11 @@ export default function Parkings() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal création */}
+      {showCreate && (
+        <CreateParkingModal onClose={() => setShowCreate(false)} onCreated={load} />
       )}
     </div>
   )

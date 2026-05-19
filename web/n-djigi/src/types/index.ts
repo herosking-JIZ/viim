@@ -257,6 +257,16 @@ export interface Parking {
   longitude?: number | null
 }
 
+export interface CreateParkingPayload {
+  nom: string
+  adresse: string
+  ville: string
+  capacite_totale: number
+  latitude: number
+  longitude: number
+  horaires?: string
+}
+
 export interface VehiculeParking {
   id_vehicule: string
   immatriculation: string
