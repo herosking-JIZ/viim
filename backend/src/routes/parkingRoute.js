@@ -3,7 +3,7 @@ const { ParkingController, GestionnaireController, IncidentController } = requir
 const { authenticate }                                           = require('../middlewares/authenticate');
 const { authorize, can }                                         = require('../middlewares/authorize');
 const { parkingSchema, receptionSchema, sortieSchema, maintenanceSchema, updateVehiculeSchema, mouvementsQuerySchema } = require('../validators/parkingValidation');
-const { joiValidate } = require('../middlewares/validate.middleware');
+const joiValidate = require('../middlewares/validate.middleware');
 
 
 const parkingRoute = express.Router();
