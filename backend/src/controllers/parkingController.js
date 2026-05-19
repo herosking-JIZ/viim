@@ -141,17 +141,16 @@ const ParkingController = {
   // ── Créer un parking (admin) ────────────────────────────────
   async creer(req, res) {
     try {
-      const { nom, adresse, capacite_totale, latitude, longitude } = req.body;
-
-      if (!nom || !adresse) {
-        return res.status(400).json({ success: false, message: 'nom et adresse requis.' });
-      }
+      const { nom, adresse, ville, horaires, capacite_totale, latitude, longitude } = req.body;
 
       const parking = await prisma.parking.create({
         data: {
           nom,
           adresse,
+          ville: ville || 'Ouagadougou',
+          horaires: horaires || '24h/24 - 7j/7',
           capacite_totale: capacite_totale ? parseInt(capacite_totale) : null,
+          capacite_occupee: 0,
           latitude:        latitude  ? parseFloat(latitude)  : null,
           longitude:       longitude ? parseFloat(longitude) : null,
         }
