@@ -1,5 +1,6 @@
 const { prisma } = require('../config/db')
 const GestionnaireService = require('../services/gestionnaireService')
+const keycloakService = require('../services/keycloakService')
 const bcrypt = require('bcryptjs')
 const rateLimit = require('express-rate-limit')
 
@@ -52,6 +53,7 @@ const InvitationController = {
   /**
    * POST /auth/complete-first-connection
    * Complete account activation (set password) (public route)
+   * Syncs password to Keycloak (source of truth for authentication)
    * Rate limited: 5 attempts per 15 min per token
    */
   async completeFirstConnection(req, res) {
@@ -85,10 +87,41 @@ const InvitationController = {
         })
       }
 
-      // Hash password
+      // 1️⃣ Sync password to Keycloak (source of truth for authentication)
+      if (user.keycloak_id) {
+        try {
+          await keycloakService.adminAPI.users.resetPassword({
+            realm: process.env.KEYCLOAK_REALM,
+            id: user.keycloak_id,
+            credential: {
+              temporary: false,
+              type: 'password',
+              value: nouveau_mot_de_passe
+            }
+          })
+          console.log(JSON.stringify({
+            event: 'keycloak_password_reset',
+            user_id: user.id_utilisateur,
+            keycloak_id: user.keycloak_id,
+            timestamp: new Date().toISOString()
+          }))
+        } catch (kcError) {
+          console.error(JSON.stringify({
+            event: 'keycloak_password_reset_failed',
+            user_id: user.id_utilisateur,
+            keycloak_id: user.keycloak_id,
+            error: kcError.message,
+            timestamp: new Date().toISOString()
+          }))
+          // Non-blocking: log the error but continue with local password storage
+          // User can use Keycloak's reset password flow if this fails
+        }
+      }
+
+      // 2️⃣ Hash and store password locally (for audit/fallback)
       const hashedPassword = await bcrypt.hash(nouveau_mot_de_passe, 10)
 
-      // Update user (transaction to ensure atomicity)
+      // 3️⃣ Update user (transaction to ensure atomicity)
       const updated = await prisma.$transaction(async (tx) => {
         return tx.utilisateur.update({
           where: { id_utilisateur: user.id_utilisateur },
@@ -98,14 +131,20 @@ const InvitationController = {
             invitation_token: null,
             invitation_token_expire: null,
             invitation_used_at: new Date(),
-            invitation_resend_count: 0, // Reset counter
+            invitation_resend_count: 0,
             tentatives_connexion: 0,
             bloque_jusqu_au: null
           }
         })
       })
 
-      console.log(`✅ [FIRST_CONNECTION_COMPLETED] user=${user.id_utilisateur} email=${email}`)
+      console.log(JSON.stringify({
+        event: 'first_connection_completed',
+        user_id: user.id_utilisateur,
+        email: email,
+        keycloak_id: user.keycloak_id,
+        timestamp: new Date().toISOString()
+      }))
 
       res.status(200).json({
         success: true,
