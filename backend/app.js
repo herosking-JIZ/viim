@@ -9,7 +9,8 @@ const route = require('./src/routes/index');
 const requestLogger = require('./src/middlewares/requestLogger');
 
 const app = express();
-app.set('etag', false)
+app.set('etag', false);
+app.set('trust proxy', 1); // Trust the first proxy (Nginx reverse proxy)
 const PORT = process.env.PORT || 8000;
 
 
@@ -73,11 +74,13 @@ app.use((req, res, next) => {
     console.log(`\x1b[36m[DEBUG-REQ] ${req.method} ${req.originalUrl}\x1b[0m`);
     
     if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
-        if (Object.keys(req.body).length > 0) {
+        if (req.body && Object.keys(req.body).length > 0) {
             console.log('\x1b[33m[BODY]:\x1b[0m', JSON.stringify(req.body, null, 2));
-        } else {
+        } else if (req.body) {
             console.log('\x1b[33m[BODY]:\x1b[0m {} (vide)');
         }
+        // Note: for multipart/form-data, req.body is undefined until Multer processes it
+        // Multipart payload logging is handled in documentController
     }
     
     if (Object.keys(req.query).length > 0) {

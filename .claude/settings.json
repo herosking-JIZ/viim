@@ -13,7 +13,12 @@
       "Bash(docker-compose down *)",
       "Bash(docker volume *)",
       "PowerShell(docker restart ndjigi-backend)",
-      "Bash(bash /tmp/setup_keycloak.sh)"
+      "Bash(bash /tmp/setup_keycloak.sh)",
+      "Bash(docker-compose ps *)",
+      "Bash(docker-compose build *)",
+      "Bash(docker-compose up *)",
+      "Bash(docker-compose restart *)",
+      "PowerShell(ls 'C:\\\\Users\\\\Kader SAWADOGO\\\\Desktop\\\\ndjigiv1\\\\backend\\\\prisma\\\\migrations\\\\')"
     ]
   }
 }

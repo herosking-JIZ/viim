@@ -10,6 +10,8 @@ import type {
   ZoneTarifaire, CategorieVehicule, CodePromo,  TarifCategorieZone,
   AdminKpis, ChartDataPoint, TopChauffeur,
   Ticket,
+  // Gestionnaire (Phase 1+)
+  CreateGestionnairePayload, GestionnaireCreationResponse, InvitationVerifyResponse, FirstConnectionCompleteResponse, InvitationResendResponse, DocumentUploadResponse, FirstConnectionPayload,
 } from '@/types'
 import * as mock from '@/data/mockData'
 import { STORAGE_KEY_ACCESS, STORAGE_KEY_REFRESH } from '@/contexts/AuthContext'
@@ -35,9 +37,31 @@ api.interceptors.request.use((config) => {
 
 // ─── Gérer les réponses : unwrap { success, data } ──────────
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    // Check if user has temporary password and needs to change it
+    const responseData = res.data?.data
+    if (responseData?.mot_de_passe_temporaire === true && !window.location.pathname.includes('/auth/change-password')) {
+      // Store flag in sessionStorage and redirect after a brief moment
+      sessionStorage.setItem('needs_password_change', 'true')
+      setTimeout(() => {
+        if (!window.location.pathname.includes('/auth/change-password')) {
+          window.location.href = '/auth/change-password'
+        }
+      }, 100)
+    }
+    return res
+  },
   async (err) => {
     const status = err.response?.status
+    const errorCode = err.response?.data?.code
+
+    // PASSWORD_CHANGE_REQUIRED → redirect to password change page
+    if (status === 403 && errorCode === 'PASSWORD_CHANGE_REQUIRED') {
+      if (!window.location.pathname.includes('/auth/change-password')) {
+        window.location.href = '/auth/change-password'
+      }
+      return Promise.reject(err)
+    }
 
     // Token expiré → tenter le refresh
     if (status === 401) {
@@ -158,9 +182,10 @@ export const authService = {
   },
 
   // Changer le mot de passe (utilisateur connecté)
+  // Works for both temporary password change and regular password change
   changePassword: async (ancienMotDePasse: string, nouveauMotDePasse: string): Promise<void> => {
     if (IS_DEMO) { await delay(500); return }
-    const { data } = await api.post<ApiResponse<null>>('/auth/change-password', {
+    const { data } = await api.post<ApiResponse<null>>('/auth/change-temporary-password', {
       ancien_mot_de_passe: ancienMotDePasse,
       nouveau_mot_de_passe: nouveauMotDePasse,
     })
@@ -422,6 +447,82 @@ export const parkingsService = {
       return _mouvements.filter((m) => !q || m.immatriculation.toLowerCase().includes(q) || m.parking_nom.toLowerCase().includes(q) || m.parkeur_nom.toLowerCase().includes(q))
     }
     const { data } = await api.get<ApiResponse<MouvementParking[]>>('/parkings/mouvements', { params })
+    return extractData(data)
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GESTIONNAIRE INVITATION SYSTEM (Phase 1+)
+// ═══════════════════════════════════════════════════════════════
+export const gestionnaireService = {
+  // Create gestionnaire (admin only)
+  create: async (payload: CreateGestionnairePayload): Promise<GestionnaireCreationResponse> => {
+    if (IS_DEMO) {
+      await delay(500)
+      return {
+        id_utilisateur: `g-${Date.now()}`,
+        email: payload.email,
+        parking: { id_parking: payload.id_parking, nom: 'Parking' },
+        invitation_sent_at: new Date().toISOString(),
+        invitation_expires_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+      }
+    }
+    const { data } = await api.post<ApiResponse<GestionnaireCreationResponse>>(
+      '/admin/gestionnaires',
+      payload
+    )
+    return extractData(data)
+  },
+
+  // Verify invitation token (public)
+  verifyToken: async (token: string): Promise<InvitationVerifyResponse> => {
+    if (IS_DEMO) {
+      await delay()
+      return {
+        email: 'demo@example.com',
+        id_utilisateur: 'demo-user',
+        parking_nom: 'Parking Demo',
+      }
+    }
+    const { data } = await api.get<ApiResponse<InvitationVerifyResponse>>(
+      '/auth/verify-invitation',
+      { params: { token } }
+    )
+    return extractData(data)
+  },
+
+  // Complete first connection (public)
+  completeFirstConnection: async (payload: FirstConnectionPayload): Promise<FirstConnectionCompleteResponse> => {
+    if (IS_DEMO) {
+      await delay(500)
+      return {
+        id_utilisateur: 'demo-user',
+        email: payload.email,
+        statut_compte: 'actif',
+      }
+    }
+    const { data } = await api.post<ApiResponse<FirstConnectionCompleteResponse>>(
+      '/auth/complete-first-connection',
+      payload
+    )
+    return extractData(data)
+  },
+
+  // Resend invitation (admin only)
+  resendInvitation: async (id_utilisateur: string): Promise<InvitationResendResponse> => {
+    if (IS_DEMO) {
+      await delay(400)
+      return {
+        id_utilisateur,
+        email: 'demo@example.com',
+        invitation_sent_at: new Date().toISOString(),
+        invitation_expires_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+      }
+    }
+    const { data } = await api.post<ApiResponse<InvitationResendResponse>>(
+      '/auth/resend-invitation',
+      { id_utilisateur }
+    )
     return extractData(data)
   },
 }

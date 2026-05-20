@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Search, Eye, Plus, Wallet, Loader2, X, AlertCircle } from 'lucide-react'
-import { utilisateursService, parkingsService } from '@/services/api'
+import { utilisateursService } from '@/services/api'
 import { StatusBadge } from '@/components/StatusBadge'
 import { useToast } from '@/hooks/useToast'
 import { formatDateShort, formatFCFA } from '@/lib/utils'
-import type { Utilisateur, AccountStatus, CreateUserPayload, Parking, UserRole } from '@/types'
+import type { Utilisateur, AccountStatus, CreateUserPayload, UserRole } from '@/types'
 
 // ─── Labels rôles ─────────────────────────────────────────────
 const ROLE_LABELS: Record<string, string> = {
@@ -15,9 +16,8 @@ const ROLE_LABELS: Record<string, string> = {
   proprietaire: 'Propriétaire',
 }
 
-// Rôles que l'admin peut créer
+// Rôles que l'admin peut créer (gestionnaire créé via un flux dédié)
 const CREATABLE_ROLES: { value: UserRole; label: string }[] = [
-  { value: 'gestionnaire', label: 'Gestionnaire de parking' },
   { value: 'chauffeur', label: 'Chauffeur' },
   { value: 'passager', label: 'Passager' },
   { value: 'proprietaire', label: 'Propriétaire de véhicule' },
@@ -31,18 +31,12 @@ interface CreateUserModalProps {
 
 function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
   const { toast } = useToast()
-  const [parkings, setParkings] = useState<Parking[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState<CreateUserPayload>({
     nom: '', prenom: '', email: '', numero_telephone: '',
-    mot_de_passe: '', role: 'gestionnaire', adresse: '', parking_id: '',
+    mot_de_passe: '', role: 'chauffeur', adresse: '', parking_id: '',
   })
-
-  // Charger les parkings pour associer un gestionnaire
-  useEffect(() => {
-    parkingsService.list().then(setParkings).catch(() => {})
-  }, [])
 
   const set = (field: keyof CreateUserPayload) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -53,10 +47,6 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
     setError('')
     if (!form.nom || !form.prenom || !form.email || !form.numero_telephone || !form.mot_de_passe) {
       setError('Tous les champs obligatoires doivent être remplis.')
-      return
-    }
-    if (form.role === 'gestionnaire' && !form.parking_id) {
-      setError('Vous devez associer un parking à ce gestionnaire.')
       return
     }
 
@@ -113,27 +103,6 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
               ))}
             </select>
           </div>
-
-          {/* Parking — uniquement si gestionnaire */}
-          {form.role === 'gestionnaire' && (
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Parking associé <span className="text-destructive">*</span>
-              </label>
-              <select
-                value={form.parking_id}
-                onChange={set('parking_id')}
-                className="w-full rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/50"
-              >
-                <option value="">— Sélectionner un parking —</option>
-                {parkings.map((p) => (
-                  <option key={p.id_parking} value={p.id_parking}>
-                    {p.nom} — {p.ville}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
 
           {/* Nom / Prénom */}
           <div className="grid grid-cols-2 gap-3">
@@ -329,6 +298,7 @@ function DepotModal({ user, onClose }: DepotModalProps) {
 
 // ─── Page principale ──────────────────────────────────────────
 export default function Users() {
+  const navigate = useNavigate()
   const { toast } = useToast()
   const [users, setUsers] = useState<Utilisateur[]>([])
   const [total, setTotal] = useState(0)
@@ -376,13 +346,22 @@ export default function Users() {
           <h1 className="text-2xl font-display font-bold">Utilisateurs</h1>
           <p className="text-sm text-muted-foreground mt-0.5">{total} utilisateurs au total</p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shrink-0"
-        >
-          <Plus className="h-4 w-4" />
-          Créer un utilisateur
-        </button>
+        <div className="flex gap-3 shrink-0">
+          <button
+            onClick={() => navigate('/gestionnaires/create')}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border hover:bg-muted text-sm font-semibold transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            Créer un gestionnaire
+          </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            Créer un utilisateur
+          </button>
+        </div>
       </div>
 
       {/* Filtres */}

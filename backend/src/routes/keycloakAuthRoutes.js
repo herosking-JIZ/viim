@@ -15,7 +15,13 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { ipKeyGenerator } = require('express-rate-limit');
 const KeycloakAuthController = require('../controllers/keycloakAuthController');
+const AuthController = require('../controllers/authController');
+const InvitationController = require('../controllers/invitationController');
 const { forgotPasswordRules, resetPasswordRules } = require('../validators/authValidator');
+const joiValidate = require('../middlewares/validate.middleware');
+const { firstConnectionSchema, resendInvitationSchema } = require('../validators/gestionnaireValidation');
+const { authenticate } = require('../middlewares/authenticate');
+const { authorize } = require('../middlewares/authorize');
 
 const router = express.Router();
 
@@ -73,12 +79,40 @@ const otpDailyLimiter = rateLimit({
 });
 
 /**
+ * POST /auth/local/login
+ * Body: { email, password }
+ * Réponse: { access_token, refresh_token, user, expires_in, mot_de_passe_temporaire }
+ * Used for: gestionnaires, admins, and other local email/password users
+ */
+router.post('/local/login', loginLimiter, async (req, res) => {
+  await AuthController.localLogin(req, res);
+});
+
+/**
+ * POST /auth/change-temporary-password
+ * Change temporary password to permanent password
+ * Auth: Bearer token required
+ * Body: { ancien_mot_de_passe, nouveau_mot_de_passe }
+ * Réponse: { success: true, data: { id_utilisateur } }
+ */
+router.post('/change-temporary-password', authenticate, async (req, res) => {
+  await AuthController.changeTemporaryPassword(req, res);
+});
+
+/**
  * POST /auth/login
  * Body: { email, password }
- * Réponse: { access_token, refresh_token, user, expires_in }
+ * Réponse: { access_token, refresh_token, user, expires_in } (Keycloak)
+ * Fallback if Keycloak auth fails - tries local auth
  */
 router.post('/login', loginLimiter, async (req, res) => {
-  await KeycloakAuthController.login(req, res);
+  try {
+    await KeycloakAuthController.login(req, res);
+  } catch (error) {
+    // If Keycloak login fails, try local login as fallback
+    console.log(`⚠️ Keycloak login failed, trying local auth...`);
+    await AuthController.localLogin(req, res);
+  }
 });
 
 /**
@@ -214,6 +248,62 @@ router.post('/totp/setup', totpLimiter, async (req, res) => {
 router.post('/totp/verify', totpLimiter, async (req, res) => {
   await KeycloakAuthController.totpVerify(req, res);
 });
+
+// ─── Gestionnaire Invitation System (Public Routes) ────────────
+
+/**
+ * GET /auth/verify-invitation?token=XXX
+ * Verify invitation token is valid (PUBLIC)
+ * Query: token=string (UUID)
+ * Returns: { email, id_utilisateur, parking_nom }
+ */
+router.get('/verify-invitation', async (req, res) => {
+  await InvitationController.verifyToken(req, res);
+});
+
+/**
+ * POST /auth/complete-first-connection
+ * Complete account activation - set password (PUBLIC)
+ * Body: { token, email, nouveau_mot_de_passe, accepte_conditions }
+ * Returns: { id_utilisateur, email, statut_compte }
+ * Rate limited: 5 attempts per 15 min per token
+ */
+const firstConnectionLimiter = rateLimit({
+  keyGenerator: (req) => `${req.body?.token || 'unknown'}_${ipKeyGenerator(req)}`,
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: {
+    success: false,
+    message: 'Trop de tentatives. Réessayez dans 15 minutes.',
+    code: 'RATE_LIMIT'
+  }
+});
+
+router.post(
+  '/complete-first-connection',
+  firstConnectionLimiter,
+  joiValidate({ body: firstConnectionSchema }),
+  async (req, res) => {
+    await InvitationController.completeFirstConnection(req, res);
+  }
+);
+
+/**
+ * POST /auth/resend-invitation
+ * Resend invitation email (ADMIN only)
+ * Auth: Bearer token required
+ * Body: { id_utilisateur }
+ * Returns: { id_utilisateur, email, invitation_sent_at, invitation_expires_at }
+ */
+router.post(
+  '/resend-invitation',
+  authenticate,
+  authorize('admin'),
+  joiValidate({ body: resendInvitationSchema }),
+  async (req, res) => {
+    await InvitationController.resendInvitation(req, res);
+  }
+);
 
 // ─── Admin User Management (Phase 7) ──────────────────────────
 

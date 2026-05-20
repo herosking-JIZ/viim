@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import './lib/leaflet-setup' // Apply Leaflet fixes before any component renders
 import App from './App'
 import './index.css'
 

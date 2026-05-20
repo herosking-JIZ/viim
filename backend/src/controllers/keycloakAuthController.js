@@ -208,7 +208,8 @@ const KeycloakAuthController = {
           data: {
             requires_2fa: true,
             login_token: loginToken,
-            phone_masked: phoneMasked
+            phone_masked: phoneMasked,
+            mot_de_passe_temporaire: user.mot_de_passe_temporaire || false
           }
         });
       }
@@ -223,6 +224,7 @@ const KeycloakAuthController = {
           refresh_token: kcTokens.refresh_token,
           expires_in: kcTokens.expires_in,
           token_type: kcTokens.token_type,
+          mot_de_passe_temporaire: user.mot_de_passe_temporaire || false,
           user: {
             id_utilisateur: user.id_utilisateur,
             keycloak_id: user.keycloak_id,

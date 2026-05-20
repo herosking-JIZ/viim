@@ -17,7 +17,12 @@ export default function ChangePassword() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    if (form.nouveau.length < 8) { setError('Le nouveau mot de passe doit contenir au moins 8 caractères.'); return }
+    // Validate new password: 12+ chars, uppercase, lowercase, digit, special char
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{12,}$/
+    if (!passwordRegex.test(form.nouveau)) {
+      setError('Le mot de passe doit contenir au moins 12 caractères, une majuscule, une minuscule, un chiffre et un caractère spécial.')
+      return
+    }
     if (form.nouveau !== form.confirm) { setError('Les nouveaux mots de passe ne correspondent pas.'); return }
 
     setLoading(true)

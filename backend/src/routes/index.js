@@ -13,6 +13,7 @@ const promoRoute = require('./promoRoute');
 const proprietaireRoute = require('./proprietaireRoute');
 const reservationRoute = require('./reservationRoute');
 const utilisateurRoute = require('./utilisateurRoute');
+const gestionnaireRoute = require('./gestionnaireRoute');
 const zoneTarifaireRoute = require('./zoneTarifaireRoute');
 const dashboardRoute = require('./dashboardRoute');
 const documentRoute = require('./documentRoute');
@@ -24,6 +25,8 @@ const categorieRoutes = require('./categorieVehiculeRoute');
 const tarifRoutes = require('./tarifCategorieZoneRoute');
 
 const { authenticateKeycloak } = require('../middlewares/authenticateKeycloak');
+const { authenticate } = require('../middlewares/authenticate');
+const requirePermanentPassword = require('../middlewares/requirePermanentPassword');
 
 console.log('Chargement des routes...');
 
@@ -33,8 +36,20 @@ const router = express.Router();
 // Enregistrées en PREMIER pour authentification
 router.use('/auth', keycloakAuthRoutes);
 
-// Appliquer l'authentification Keycloak à toutes les autres routes
-router.use(authenticateKeycloak);
+// Appliquer l'authentification (supports both Keycloak and local/JWT) à toutes les autres routes
+// Try Keycloak first, fallback to local JWT auth
+router.use((req, res, next) => {
+  authenticateKeycloak(req, res, (err) => {
+    if (err || !req.user) {
+      authenticate(req, res, next);
+    } else {
+      next();
+    }
+  });
+});
+
+// Enforce permanent password requirement (must be AFTER authentication)
+router.use(requirePermanentPassword);
 
 router.use('/trajets', trajetRoute);
 router.use('/vehicules', vehiculeRoute);
@@ -49,6 +64,7 @@ router.use('/code-promo', promoRoute);
 router.use('/proprietaire', proprietaireRoute);
 router.use('/reservation', reservationRoute);
 router.use('/utilisateurs', utilisateurRoute);
+router.use('/admin/gestionnaires', gestionnaireRoute);
 router.use('/vehicule', vehiculeRoute);
 router.use('/zone-tarifaire', zoneTarifaireRoute);
 router.use('/dashboard', dashboardRoute);

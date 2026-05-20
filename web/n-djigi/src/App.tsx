@@ -9,6 +9,7 @@ import Login from '@/pages/Login'
 import VerifySMS from '@/pages/VerifySMS'
 import ForgotPassword from '@/pages/auth/ForgotPassword'
 import ResetPassword from '@/pages/auth/ResetPassword'
+import FirstConnectionPage from '@/pages/auth/FirstConnectionPage'
 import NotFound from '@/pages/NotFound'
 
 // Pages admin
@@ -21,6 +22,7 @@ import Parkings from '@/pages/admin/Parkings'
 import Support from '@/pages/admin/Support'
 import Config from '@/pages/admin/Config'
 import Gestionnaires from '@/pages/admin/Gestionnaires'
+import CreateGestionnaire from '@/pages/admin/CreateGestionnaire'
 
 // Pages gestionnaire
 import ManagerDashboard from '@/pages/manager/ManagerDashboard'
@@ -82,6 +84,10 @@ function AppRoutes() {
       <Route path="/auth/forgot-password" element={<ForgotPassword />} />
       {/* Le backend envoie un lien du type /auth/reset-password?token=XXXX */}
       <Route path="/auth/reset-password" element={<ResetPassword />} />
+      {/* Le backend envoie un lien du type /auth/first-connection?token=XXXX */}
+      <Route path="/auth/first-connection" element={<FirstConnectionPage />} />
+      {/* Change temporary password (requires auth but accessible when mot_de_passe_temporaire=true) */}
+      <Route path="/auth/change-password" element={<ChangePassword />} />
 
       {/* ── Routes protégées (avec layout) ─────────────────── */}
       <Route
@@ -157,6 +163,10 @@ function AppRoutes() {
         <Route
           path="gestionnaires"
           element={<ProtectedRoute adminOnly><Gestionnaires /></ProtectedRoute>}
+        />
+        <Route
+          path="gestionnaires/create"
+          element={<ProtectedRoute adminOnly><CreateGestionnaire /></ProtectedRoute>}
         />
       </Route>
 

@@ -12,15 +12,7 @@ import L from 'leaflet'
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 
-// Fix Leaflet marker icons
-import markerIcon from 'leaflet/dist/images/marker-icon.png'
-import markerShadow from 'leaflet/dist/images/marker-shadow.png'
-
-delete (L.Icon.Default.prototype as any)._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
-})
+// Global Leaflet marker icon fix is applied in lib/leaflet-setup.ts (imported in main.tsx)
 
 // ─── Composant interne: Map avec clic pour placer le marqueur ──
 interface MapClickerProps {

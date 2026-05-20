@@ -108,7 +108,16 @@ const authenticateKeycloak = async (req, res, next) => {
       await redis.setex(cacheKey, 60, JSON.stringify(user));
     }
 
-    // 6. Vérifier si l'utilisateur est bloqué
+    // 6. Check if account is pending activation (invitation system)
+    if (user.statut_compte === 'en_attente_activation') {
+      return res.status(403).json({
+        success: false,
+        message: 'Compte non activé. Veuillez accepter l\'invitation par email.',
+        code: 'ACCOUNT_PENDING_ACTIVATION'
+      });
+    }
+
+    // 7. Vérifier si l'utilisateur est bloqué
     if (user.bloque_jusqu_au && user.bloque_jusqu_au > new Date()) {
       return res.status(401).json({
         success: false,
@@ -117,14 +126,14 @@ const authenticateKeycloak = async (req, res, next) => {
       });
     }
 
-    // 7. Extraire les rôles depuis Keycloak ou depuis la base de données
+    // 8. Extraire les rôles depuis Keycloak ou depuis la base de données
     const keycloakRoles = payload.realm_access?.roles || [];
     const dbRoles = user.utilisateur_role?.map(r => r.role) || [];
 
     // Fusionner les rôles (priorité à ceux de Keycloak)
     const roles = [...new Set([...keycloakRoles, ...dbRoles])];
 
-    // 8. Attacher l'utilisateur à la requête
+    // 9. Attacher l'utilisateur à la requête
     const { mot_de_passe_hash, reset_token, reset_token_expire, ...userSafe } = user;
 
     req.user = {

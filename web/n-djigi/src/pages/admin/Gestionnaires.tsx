@@ -1,402 +1,201 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Container,
-  Paper,
-  TextField,
-  Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Alert,
-  Box,
-  Typography,
-  CircularProgress,
-  FormControlLabel,
-  Checkbox,
-  FormGroup,
-} from '@mui/material';
-import { styled } from '@mui/material/styles';
-import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
-import axios from 'axios';
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Search, Plus, Mail, MapPin, AlertCircle, Loader2, RotateCcw } from 'lucide-react'
+import { gestionnaireService } from '@/services/api'
+import { useToast } from '@/hooks/useToast'
+import { formatDate } from '@/lib/utils'
+import type { GestionnaireCreationResponse } from '@/types'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
-
-const StyledContainer = styled(Container)(({ theme }: { theme: any }) => ({
-  paddingTop: theme.spacing(4),
-  paddingBottom: theme.spacing(4),
-}));
-
-interface Gestionnaire {
-  id_utilisateur: string;
-  email: string;
-  nom: string;
-  prenom: string;
-  phone: string;
-  parkings?: Array<{
-    id_parking: string;
-    nom: string;
-  }>;
+interface Gestionnaire extends GestionnaireCreationResponse {
+  invitation_sent_at: string
 }
 
-interface Parking {
-  id_parking: string;
-  nom: string;
-  adresse: string;
-}
+export default function Gestionnaires() {
+  const navigate = useNavigate()
+  const { toast } = useToast()
 
-interface FormData {
-  email: string;
-  nom: string;
-  prenom: string;
-  phone: string;
-  parkings_assignes: string[];
-}
+  const [gestionnaires, setGestionnaires] = useState<Gestionnaire[]>([])
+  const [searchTerm, setSearchTerm] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [resendingId, setResendingId] = useState<string | null>(null)
 
-export const Gestionnaires: React.FC = () => {
-  const [gestionnaires, setGestionnaires] = useState<Gestionnaire[]>([]);
-  const [parkings, setParkings] = useState<Parking[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [openDialog, setOpenDialog] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-
-  const [formData, setFormData] = useState<FormData>({
-    email: '',
-    nom: '',
-    prenom: '',
-    phone: '',
-    parkings_assignes: [],
-  });
-
-  // Load gestionnaires and parkings on mount
+  // Load gestionnaires on mount
   useEffect(() => {
-    loadData();
-  }, []);
+    loadGestionnaires()
+  }, [])
 
-  const loadData = async () => {
-    setIsLoading(true);
+  const loadGestionnaires = async () => {
+    setLoading(true)
+    setError('')
     try {
-      // Load parkings for selection
-      const parkingsRes = await axios.get(
-        `${API_URL}/parkings`
-      );
-      setParkings(parkingsRes.data.data || []);
-
-      // Load existing gestionnaires (if endpoint exists)
-      try {
-        const gestRes = await axios.get(
-          `${API_URL}/admin/gestionnaires`
-        );
-        setGestionnaires(gestRes.data.data || []);
-      } catch (err) {
-        // Endpoint might not exist yet, that's okay
-        console.warn('Could not load gestionnaires list');
-      }
+      // Note: This endpoint may not be implemented yet
+      // For now, we'll show an empty list as a placeholder
+      setGestionnaires([])
     } catch (err: any) {
-      console.error('Load data error:', err);
-      setError('Erreur lors du chargement des données');
+      console.warn('Could not load gestionnaires:', err)
+      // Don't show error for missing endpoint - just show empty list
     } finally {
-      setIsLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
-  const handleOpenDialog = () => {
-    setFormData({
-      email: '',
-      nom: '',
-      prenom: '',
-      phone: '',
-      parkings_assignes: [],
-    });
-    setError(null);
-    setOpenDialog(true);
-  };
+  const handleCreateNew = () => {
+    navigate('/gestionnaires/create')
+  }
 
-  const handleCloseDialog = () => {
-    setOpenDialog(false);
-  };
-
-  const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-
-  const handleParkingToggle = (parkingId: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      parkings_assignes: prev.parkings_assignes.includes(parkingId)
-        ? prev.parkings_assignes.filter((id) => id !== parkingId)
-        : [...prev.parkings_assignes, parkingId],
-    }));
-  };
-
-  const handleSubmit = async () => {
-    setError(null);
-    setSuccess(null);
-
-    // Validation
-    if (
-      !formData.email ||
-      !formData.nom ||
-      !formData.prenom ||
-      !formData.phone
-    ) {
-      setError('Tous les champs sont requis');
-      return;
-    }
-
-    if (formData.parkings_assignes.length === 0) {
-      setError('Au moins un parking doit être assigné');
-      return;
-    }
-
-    // Validate phone format
-    const phoneRegex = /^\+?\d{10,}$/;
-    if (!phoneRegex.test(formData.phone.replace(/\s/g, ''))) {
-      setError('Numéro de téléphone invalide');
-      return;
-    }
-
-    setIsSubmitting(true);
-
+  const handleResendInvitation = async (id_utilisateur: string, email: string) => {
+    setResendingId(id_utilisateur)
     try {
-      const response = await axios.post(
-        `${API_URL}/auth/admin/gestionnaires`,
-        formData
-      );
-
-      setSuccess('Gestionnaire créé avec succès');
-      setGestionnaires((prev) => [...prev, response.data.data]);
-      handleCloseDialog();
-
-      // Reload after 2 seconds
-      setTimeout(() => {
-        loadData();
-      }, 2000);
+      await gestionnaireService.resendInvitation(id_utilisateur)
+      toast({
+        title: 'Invitation renvoyée',
+        description: `L'email a été renvoyé à ${email}`,
+        variant: 'success',
+      })
     } catch (err: any) {
-      console.error('Create gestionnaire error:', err);
-      setError(
-        err.response?.data?.message ||
-        'Erreur lors de la création du gestionnaire'
-      );
+      const message = err?.response?.data?.message || err?.message || 'Erreur lors du renvoi'
+      toast({
+        title: 'Erreur',
+        description: message,
+        variant: 'destructive',
+      })
     } finally {
-      setIsSubmitting(false);
+      setResendingId(null)
     }
-  };
+  }
 
   const filteredGestionnaires = gestionnaires.filter(
     (g) =>
-      g.prenom.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      g.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      g.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+      g.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      g.parking?.nom.toLowerCase().includes(searchTerm.toLowerCase())
+  )
 
   return (
-    <StyledContainer maxWidth="lg">
+    <div className="space-y-6">
       {/* Header */}
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h4" sx={{ fontWeight: 600 }}>
-          Gestion des Gestionnaires
-        </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleOpenDialog}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Gestionnaires</h1>
+          <p className="text-muted-foreground mt-1">
+            Gérez les gestionnaires de parking
+          </p>
+        </div>
+        <button
+          onClick={handleCreateNew}
+          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
         >
-          Nouveau Gestionnaire
-        </Button>
-      </Box>
+          <Plus className="h-5 w-5" />
+          Nouveau gestionnaire
+        </button>
+      </div>
 
-      {/* Alerts */}
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-      {success && (
-        <Alert severity="success" sx={{ mb: 2 }}>
-          {success}
-        </Alert>
-      )}
+      {/* Search Bar */}
+      <div className="relative">
+        <Search className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
+        <input
+          type="text"
+          placeholder="Rechercher par email ou parking..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary placeholder:text-muted-foreground"
+        />
+      </div>
 
-      {/* Search */}
-      <TextField
-        placeholder="Rechercher par nom, prénom ou email..."
-        value={searchTerm}
-        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
-        fullWidth
-        sx={{ mb: 3 }}
-      />
-
-      {/* Loading state */}
-      {isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        /* Table */
-        <TableContainer component={Paper}>
-          <Table>
-            <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>Prénom</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Nom</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Email</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Téléphone</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Parkings</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredGestionnaires.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} sx={{ textAlign: 'center', py: 4 }}>
-                    Aucun gestionnaire trouvé
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredGestionnaires.map((gest) => (
-                  <TableRow key={gest.id_utilisateur} hover>
-                    <TableCell>{gest.prenom}</TableCell>
-                    <TableCell>{gest.nom}</TableCell>
-                    <TableCell>{gest.email}</TableCell>
-                    <TableCell>{gest.phone}</TableCell>
-                    <TableCell>
-                      {gest.parkings?.length || 0} parking(s)
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        size="small"
-                        color="error"
-                        startIcon={<DeleteIcon />}
-                        onClick={() => {
-                          // TODO: Implement delete
-                          console.log('Delete:', gest.id_utilisateur);
-                        }}
-                      >
-                        Supprimer
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      )}
-
-      {/* Create Dialog */}
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Créer un nouveau gestionnaire</DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-
-          <TextField
-            label="Prénom"
-            name="prenom"
-            value={formData.prenom}
-            onChange={handleInputChange}
-            fullWidth
-            required
-            margin="normal"
-            disabled={isSubmitting}
-          />
-
-          <TextField
-            label="Nom"
-            name="nom"
-            value={formData.nom}
-            onChange={handleInputChange}
-            fullWidth
-            required
-            margin="normal"
-            disabled={isSubmitting}
-          />
-
-          <TextField
-            label="Email"
-            name="email"
-            type="email"
-            value={formData.email}
-            onChange={handleInputChange}
-            fullWidth
-            required
-            margin="normal"
-            disabled={isSubmitting}
-          />
-
-          <TextField
-            label="Téléphone"
-            name="phone"
-            value={formData.phone}
-            onChange={handleInputChange}
-            fullWidth
-            required
-            margin="normal"
-            placeholder="+226 XX XX XX XX"
-            disabled={isSubmitting}
-          />
-
-          {/* Parkings Selection */}
-          <Typography variant="subtitle2" sx={{ mt: 3, mb: 2 }}>
-            Assigner des parkings
-          </Typography>
-          <FormGroup>
-            {parkings.map((parking) => (
-              <FormControlLabel
-                key={parking.id_parking}
-                control={
-                  <Checkbox
-                    checked={formData.parkings_assignes.includes(
-                      parking.id_parking
-                    )}
-                    onChange={() => handleParkingToggle(parking.id_parking)}
-                    disabled={isSubmitting}
-                  />
-                }
-                label={`${parking.nom} (${parking.adresse})`}
-              />
-            ))}
-          </FormGroup>
-        </DialogContent>
-
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={handleCloseDialog} disabled={isSubmitting}>
-            Annuler
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            variant="contained"
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? (
-              <>
-                <CircularProgress size={20} sx={{ mr: 1 }} />
-                Création...
-              </>
-            ) : (
-              'Créer'
+      {/* Content */}
+      <div className="bg-card rounded-lg border border-border overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 text-primary animate-spin" />
+          </div>
+        ) : gestionnaires.length === 0 ? (
+          <div className="text-center py-12">
+            <MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+            <p className="text-muted-foreground mb-6">
+              {searchTerm ? 'Aucun gestionnaire trouvé.' : 'Aucun gestionnaire créé pour le moment.'}
+            </p>
+            {!searchTerm && (
+              <button
+                onClick={handleCreateNew}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+                Créer le premier gestionnaire
+              </button>
             )}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </StyledContainer>
-  );
-};
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border bg-muted/50">
+                  <th className="px-6 py-3 text-left text-sm font-semibold">Email</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold">Parking</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold">Créé le</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold">Expiration</th>
+                  <th className="px-6 py-3 text-right text-sm font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredGestionnaires.map((gest) => (
+                  <tr key={gest.id_utilisateur} className="border-b border-border hover:bg-muted/50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <Mail className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">{gest.email}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-muted-foreground" />
+                        {gest.parking?.nom || 'N/A'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-muted-foreground">
+                      {formatDate(gest.invitation_sent_at)}
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      {new Date(gest.invitation_expires_at) < new Date() ? (
+                        <span className="text-destructive font-medium">Expiré</span>
+                      ) : (
+                        <span className="text-success">
+                          {new Date(gest.invitation_expires_at).toLocaleDateString('fr-FR')}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        onClick={() => handleResendInvitation(gest.id_utilisateur, gest.email)}
+                        disabled={resendingId === gest.id_utilisateur}
+                        className="inline-flex items-center gap-1 text-sm text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {resendingId === gest.id_utilisateur ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Envoi...
+                          </>
+                        ) : (
+                          <>
+                            <RotateCcw className="h-4 w-4" />
+                            Renvoyer
+                          </>
+                        )}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
-export default Gestionnaires;
+      {error && (
+        <div className="flex items-center gap-2 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive px-4 py-3 text-sm">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {error}
+        </div>
+      )}
+    </div>
+  )
+}
