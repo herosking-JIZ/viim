@@ -134,7 +134,7 @@ const authenticateKeycloak = async (req, res, next) => {
     const roles = [...new Set([...keycloakRoles, ...dbRoles])];
 
     // 9. Attacher l'utilisateur à la requête
-    const { mot_de_passe_hash, reset_token, reset_token_expire, ...userSafe } = user;
+    const { mot_de_passe_hash, ...userSafe } = user;
 
     req.user = {
       ...userSafe,

@@ -23,7 +23,34 @@ const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { encrypt, decrypt, generateTechPassword } = require('../utils/crypto');
-const { sendResetPasswordEmail } = require('../utils/email');
+const EmailService = require('../services/emailService');
+const { validatePasswordStrength } = require('../utils/passwordValidator');
+
+const PASSWORD_RESET_TOKEN_TTL_MINUTES = parseInt(
+  process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES || '15',
+  10
+);
+
+function logStructured(level, payload) {
+  const logger = console[level] || console.log;
+  logger(JSON.stringify(payload));
+}
+
+function normalizeEmail(value) {
+  return (value || '').trim().toLowerCase();
+}
+
+function sha256(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function getClientIp(req) {
+  const forwardedFor = req.headers['x-forwarded-for'];
+  if (forwardedFor) {
+    return forwardedFor.split(',')[0].trim();
+  }
+  return req.ip || 'unknown';
+}
 
 const KeycloakAuthController = {
   /**
@@ -547,112 +574,492 @@ const KeycloakAuthController = {
 
   /**
    * POST /auth/forgot-password
-   * Demande de réinitialisation de mot de passe
+   * Demande de reinitialisation de mot de passe
    */
   async forgotPassword(req, res) {
-    try {
-      const { email } = req.body;
+    const normalizedEmail = normalizeEmail(req.body?.email);
+    const emailHash = sha256(normalizedEmail || 'missing');
+    const ip = getClientIp(req);
+    const genericResponse = {
+      success: true,
+      message: 'Si cette adresse existe, un email a ete envoye.'
+    };
 
-      if (!email) {
-        return res.status(400).json({
-          success: false,
-          message: 'Email requis.',
-          code: 'MISSING_EMAIL'
+    if (!normalizedEmail) {
+      logStructured('warn', {
+        event: 'forgot_password_missing_email',
+        email_hash: emailHash,
+        ip
+      });
+      return res.status(200).json(genericResponse);
+    }
+
+    let localUser;
+    try {
+      localUser = await prisma.utilisateur.findUnique({
+        where: { email: normalizedEmail },
+        select: {
+          id_utilisateur: true,
+          email: true,
+          prenom: true,
+          keycloak_id: true,
+          statut_compte: true
+        }
+      });
+    } catch (error) {
+      logStructured('error', {
+        event: 'forgot_password_db_lookup_failed',
+        email_hash: emailHash,
+        ip,
+        error: error.message
+      });
+      return res.status(200).json(genericResponse);
+    }
+
+    if (!localUser) {
+      try {
+        const keycloakUsers = await keycloakService.adminAPI.users.find({
+          realm: process.env.KEYCLOAK_REALM,
+          email: normalizedEmail,
+          exact: true
+        });
+
+        if (Array.isArray(keycloakUsers) && keycloakUsers.length > 0) {
+          logStructured('error', {
+            event: 'forgot_password_desync_keycloak_without_pg',
+            keycloak_id: keycloakUsers[0].id,
+            email_hash: emailHash,
+            ip
+          });
+        } else {
+          logStructured('log', {
+            event: 'forgot_password_unknown_email',
+            email_hash: emailHash,
+            ip
+          });
+        }
+      } catch (error) {
+        logStructured('error', {
+          event: 'forgot_password_keycloak_lookup_unknown_email_failed',
+          email_hash: emailHash,
+          ip,
+          error: error.message
         });
       }
 
-      // Toujours retourner un message succès (prévention d'énumération)
-      const successResponse = () => res.status(200).json({
-        success: true,
-        message: 'Si cet email existe, un lien de réinitialisation a été envoyé.'
-      });
-
-      const user = await prisma.utilisateur.findUnique({
-        where: { email }
-      });
-
-      if (!user || user.statut_compte !== 'actif') {
-        return successResponse();
-      }
-
-      const reset_token = crypto.randomUUID();
-      const reset_token_expire = new Date(Date.now() + 15 * 60 * 1000);
-
-      await prisma.utilisateur.update({
-        where: { email },
-        data: { reset_token, reset_token_expire }
-      });
-
-      await sendResetPasswordEmail(email, user.prenom, reset_token);
-      return successResponse();
-    } catch (error) {
-      console.error('❌ Forgot password error:', error.message);
-      res.status(500).json({
-        success: false,
-        message: 'Erreur serveur lors de la demande de réinitialisation.',
-        code: 'FORGOT_PASSWORD_ERROR'
-      });
+      return res.status(200).json(genericResponse);
     }
+
+    if (localUser.statut_compte !== 'actif') {
+      logStructured('log', {
+        event: 'forgot_password_blocked_account',
+        id_utilisateur: localUser.id_utilisateur,
+        statut_compte: localUser.statut_compte,
+        email_hash: emailHash,
+        ip
+      });
+      return res.status(200).json(genericResponse);
+    }
+
+    if (!localUser.keycloak_id) {
+      logStructured('error', {
+        event: 'forgot_password_desync_missing_keycloak_id',
+        id_utilisateur: localUser.id_utilisateur,
+        email_hash: emailHash,
+        ip
+      });
+      return res.status(200).json(genericResponse);
+    }
+
+    let keycloakUser;
+    try {
+      keycloakUser = await keycloakService.adminAPI.users.findOne({
+        realm: process.env.KEYCLOAK_REALM,
+        id: localUser.keycloak_id
+      });
+    } catch (error) {
+      logStructured('error', {
+        event: 'forgot_password_keycloak_lookup_failed',
+        id_utilisateur: localUser.id_utilisateur,
+        keycloak_id: localUser.keycloak_id,
+        email_hash: emailHash,
+        ip,
+        error: error.message
+      });
+      return res.status(200).json(genericResponse);
+    }
+
+    if (!keycloakUser) {
+      logStructured('error', {
+        event: 'forgot_password_desync_keycloak_user_not_found',
+        id_utilisateur: localUser.id_utilisateur,
+        keycloak_id: localUser.keycloak_id,
+        email_hash: emailHash,
+        ip
+      });
+      return res.status(200).json(genericResponse);
+    }
+
+    const rawToken = crypto.randomUUID();
+    const tokenHash = sha256(rawToken);
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MINUTES * 60 * 1000);
+
+    try {
+      await prisma.password_reset_token.deleteMany({
+        where: {
+          id_utilisateur: localUser.id_utilisateur,
+          used_at: null
+        }
+      });
+
+      await prisma.password_reset_token.create({
+        data: {
+          token_hash: tokenHash,
+          id_utilisateur: localUser.id_utilisateur,
+          keycloak_id: localUser.keycloak_id,
+          expires_at: expiresAt,
+          created_ip: ip
+        }
+      });
+    } catch (error) {
+      logStructured('error', {
+        event: 'forgot_password_token_persist_failed',
+        id_utilisateur: localUser.id_utilisateur,
+        keycloak_id: localUser.keycloak_id,
+        email_hash: emailHash,
+        ip,
+        error: error.message
+      });
+      return res.status(200).json(genericResponse);
+    }
+
+    const frontendBaseUrl = process.env.FRONTEND_URL || process.env.APP_URL || 'http://localhost:3000';
+    const resetLink = frontendBaseUrl.replace(/\/$/, '') + '/auth/reset-password?token=' + rawToken;
+
+    try {
+      await EmailService.sendPasswordResetEmail(localUser.email, {
+        prenom: localUser.prenom || 'Utilisateur',
+        resetLink,
+        expiresInMinutes: PASSWORD_RESET_TOKEN_TTL_MINUTES,
+        ipAddress: ip
+      });
+
+      logStructured('log', {
+        event: 'forgot_password_email_sent',
+        id_utilisateur: localUser.id_utilisateur,
+        keycloak_id: localUser.keycloak_id,
+        email_hash: emailHash,
+        ip
+      });
+    } catch (error) {
+      logStructured('error', {
+        event: 'forgot_password_email_send_failed',
+        id_utilisateur: localUser.id_utilisateur,
+        keycloak_id: localUser.keycloak_id,
+        email_hash: emailHash,
+        ip,
+        error: error.message
+      });
+
+      try {
+        await prisma.password_reset_token.delete({
+          where: {
+            token_hash: tokenHash
+          }
+        });
+      } catch (cleanupError) {
+        logStructured('error', {
+          event: 'forgot_password_token_cleanup_failed',
+          id_utilisateur: localUser.id_utilisateur,
+          email_hash: emailHash,
+          ip,
+          error: cleanupError.message
+        });
+      }
+    }
+
+    return res.status(200).json(genericResponse);
   },
 
   /**
    * POST /auth/reset-password
-   * Applique la réinitialisation de mot de passe
+   * Applique la reinitialisation de mot de passe
    */
   async resetPassword(req, res) {
-    try {
-      const { token, newPassword } = req.body;
+    const token = (req.body?.token || '').trim();
+    const newPassword = req.body?.newPassword;
+    const ip = getClientIp(req);
+    const userAgent = req.headers['user-agent'] || 'unknown';
+    const now = new Date();
 
-      if (!token || !newPassword) {
-        return res.status(400).json({
-          success: false,
-          message: 'Token et nouveau mot de passe requis.',
-          code: 'MISSING_FIELDS'
-        });
-      }
-
-      const user = await prisma.utilisateur.findFirst({
-        where: {
-          reset_token: token,
-          reset_token_expire: { gt: new Date() }
-        }
-      });
-
-      if (!user) {
-        return res.status(400).json({
-          success: false,
-          message: 'Lien invalide ou expiré. Faites une nouvelle demande.',
-          code: 'INVALID_RESET_TOKEN'
-        });
-      }
-
-      const mot_de_passe_hash = await bcrypt.hash(newPassword, 12);
-
-      await prisma.$transaction([
-        prisma.utilisateur.update({
-          where: { id_utilisateur: user.id_utilisateur },
-          data: {
-            mot_de_passe_hash,
-            reset_token: null,
-            reset_token_expire: null,
-            tentatives_connexion: 0,
-            bloque_jusqu_au: null
-          }
-        })
-      ]);
-
-      res.json({
-        success: true,
-        message: 'Mot de passe réinitialisé avec succès. Vous pouvez vous connecter.'
-      });
-    } catch (error) {
-      console.error('❌ Reset password error:', error.message);
-      res.status(500).json({
+    if (!token || !newPassword) {
+      return res.status(400).json({
         success: false,
-        message: 'Erreur serveur lors de la réinitialisation.',
-        code: 'RESET_PASSWORD_ERROR'
+        message: 'Token et nouveau mot de passe requis.',
+        code: 'MISSING_FIELDS'
       });
     }
+
+    const passwordStrength = validatePasswordStrength(newPassword);
+    if (!passwordStrength.isValid) {
+      logStructured('warn', {
+        event: 'reset_password_weak_password',
+        ip,
+        violations: passwordStrength.violations
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: 'Le mot de passe ne respecte pas la politique de securite.',
+        code: 'WEAK_PASSWORD',
+        errors: { violations: passwordStrength.violations }
+      });
+    }
+
+    const tokenHash = sha256(token);
+
+    let resetToken;
+    try {
+      resetToken = await prisma.password_reset_token.findUnique({
+        where: { token_hash: tokenHash },
+        include: {
+          utilisateur: {
+            select: {
+              id_utilisateur: true,
+              email: true,
+              prenom: true,
+              keycloak_id: true
+            }
+          }
+        }
+      });
+    } catch (error) {
+      logStructured('error', {
+        event: 'reset_password_token_lookup_failed',
+        ip,
+        error: error.message
+      });
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur serveur lors de la reinitialisation.',
+        code: 'RESET_PASSWORD_LOOKUP_FAILED'
+      });
+    }
+
+    if (!resetToken) {
+      logStructured('warn', {
+        event: 'reset_password_invalid_token',
+        ip
+      });
+      return res.status(400).json({
+        success: false,
+        message: 'Lien invalide ou expire. Faites une nouvelle demande.',
+        code: 'INVALID_RESET_TOKEN'
+      });
+    }
+
+    if (resetToken.used_at) {
+      logStructured('warn', {
+        event: 'reset_password_token_already_used',
+        id_reset_token: resetToken.id,
+        id_utilisateur: resetToken.id_utilisateur,
+        ip
+      });
+      return res.status(400).json({
+        success: false,
+        message: 'Ce lien a deja ete utilise. Faites une nouvelle demande.',
+        code: 'USED_RESET_TOKEN'
+      });
+    }
+
+    if (resetToken.expires_at <= now) {
+      try {
+        await prisma.password_reset_token.delete({
+          where: { id: resetToken.id }
+        });
+      } catch (error) {
+        logStructured('error', {
+          event: 'reset_password_expired_token_delete_failed',
+          id_reset_token: resetToken.id,
+          ip,
+          error: error.message
+        });
+      }
+
+      logStructured('warn', {
+        event: 'reset_password_expired_token',
+        id_reset_token: resetToken.id,
+        id_utilisateur: resetToken.id_utilisateur,
+        ip
+      });
+      return res.status(400).json({
+        success: false,
+        message: 'Lien invalide ou expire. Faites une nouvelle demande.',
+        code: 'EXPIRED_RESET_TOKEN'
+      });
+    }
+
+    if (!resetToken.utilisateur) {
+      logStructured('error', {
+        event: 'reset_password_missing_local_user',
+        id_reset_token: resetToken.id,
+        id_utilisateur: resetToken.id_utilisateur,
+        keycloak_id: resetToken.keycloak_id,
+        ip
+      });
+      return res.status(400).json({
+        success: false,
+        message: 'Lien invalide ou expire. Faites une nouvelle demande.',
+        code: 'INVALID_RESET_TOKEN'
+      });
+    }
+
+    const localUser = resetToken.utilisateur;
+
+    if (!localUser.keycloak_id) {
+      logStructured('error', {
+        event: 'reset_password_desync_missing_keycloak_id',
+        id_reset_token: resetToken.id,
+        id_utilisateur: localUser.id_utilisateur,
+        ip
+      });
+      return res.status(400).json({
+        success: false,
+        message: 'Lien invalide ou expire. Faites une nouvelle demande.',
+        code: 'INVALID_RESET_TOKEN'
+      });
+    }
+
+    let keycloakUser;
+    try {
+      keycloakUser = await keycloakService.adminAPI.users.findOne({
+        realm: process.env.KEYCLOAK_REALM,
+        id: resetToken.keycloak_id
+      });
+    } catch (error) {
+      logStructured('error', {
+        event: 'reset_password_keycloak_lookup_failed',
+        id_reset_token: resetToken.id,
+        id_utilisateur: localUser.id_utilisateur,
+        keycloak_id: resetToken.keycloak_id,
+        ip,
+        error: error.message
+      });
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur serveur lors de la reinitialisation.',
+        code: 'RESET_PASSWORD_KEYCLOAK_LOOKUP_FAILED'
+      });
+    }
+
+    if (!keycloakUser) {
+      logStructured('error', {
+        event: 'reset_password_desync_keycloak_user_not_found',
+        id_reset_token: resetToken.id,
+        id_utilisateur: localUser.id_utilisateur,
+        keycloak_id: resetToken.keycloak_id,
+        ip
+      });
+      return res.status(400).json({
+        success: false,
+        message: 'Lien invalide ou expire. Faites une nouvelle demande.',
+        code: 'INVALID_RESET_TOKEN'
+      });
+    }
+
+    try {
+      await keycloakService.adminAPI.users.resetPassword({
+        realm: process.env.KEYCLOAK_REALM,
+        id: resetToken.keycloak_id,
+        credential: {
+          type: 'password',
+          value: newPassword,
+          temporary: false
+        }
+      });
+    } catch (error) {
+      logStructured('error', {
+        event: 'reset_password_keycloak_update_failed',
+        id_reset_token: resetToken.id,
+        id_utilisateur: localUser.id_utilisateur,
+        keycloak_id: resetToken.keycloak_id,
+        ip,
+        error: error.message
+      });
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur serveur lors de la reinitialisation.',
+        code: 'RESET_PASSWORD_KEYCLOAK_UPDATE_FAILED'
+      });
+    }
+
+    try {
+      await prisma.password_reset_token.update({
+        where: { id: resetToken.id },
+        data: {
+          used_at: now,
+          used_ip: ip
+        }
+      });
+    } catch (error) {
+      logStructured('error', {
+        event: 'reset_password_mark_token_used_failed',
+        id_reset_token: resetToken.id,
+        id_utilisateur: localUser.id_utilisateur,
+        ip,
+        error: error.message
+      });
+
+      try {
+        await prisma.password_reset_token.delete({
+          where: { id: resetToken.id }
+        });
+      } catch (cleanupError) {
+        logStructured('error', {
+          event: 'reset_password_token_delete_after_update_failure_failed',
+          id_reset_token: resetToken.id,
+          id_utilisateur: localUser.id_utilisateur,
+          ip,
+          error: cleanupError.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur serveur lors de la reinitialisation.',
+        code: 'RESET_PASSWORD_TOKEN_UPDATE_FAILED'
+      });
+    }
+
+    try {
+      await EmailService.sendPasswordChangedNotification(localUser.email, {
+        prenom: localUser.prenom || 'Utilisateur',
+        changedAt: now,
+        ipAddress: ip,
+        userAgent
+      });
+    } catch (error) {
+      logStructured('error', {
+        event: 'reset_password_notification_email_failed',
+        id_utilisateur: localUser.id_utilisateur,
+        keycloak_id: localUser.keycloak_id,
+        ip,
+        error: error.message
+      });
+    }
+
+    logStructured('log', {
+      event: 'reset_password_success',
+      id_reset_token: resetToken.id,
+      id_utilisateur: localUser.id_utilisateur,
+      keycloak_id: localUser.keycloak_id,
+      ip
+    });
+
+    return res.json({
+      success: true,
+      message: 'Mot de passe reinitialise avec succes. Vous pouvez vous connecter.'
+    });
   },
 
   /**
@@ -1485,66 +1892,6 @@ const KeycloakAuthController = {
   },
 
   // ──── Phase 7: Password Reset & Admin Gestionnaire Management ────
-
-  /**
-   * Forgot password: Trigger Keycloak email reset
-   * POST /auth/forgot-password
-   * Body: { email }
-   * Always returns 200 (don't reveal if email exists for security)
-   */
-  async forgotPassword(req, res) {
-    try {
-      const { email } = req.body;
-
-      if (!email) {
-        return res.status(200).json({
-          success: true,
-          message: 'Si cette adresse existe, un email a été envoyé.'
-        });
-      }
-
-      // Search for user in Keycloak
-      const users = await keycloakService.adminAPI.users.find({
-        realm: process.env.KEYCLOAK_REALM,
-        email: email,
-        exact: true
-      });
-
-      if (users.length > 0) {
-        const user = users[0];
-
-        // Trigger UPDATE_PASSWORD action email
-        try {
-          await keycloakService.adminAPI.users.executeActionsEmail({
-            realm: process.env.KEYCLOAK_REALM,
-            id: user.id,
-            actions: ['UPDATE_PASSWORD'],
-            redirectUri: `${process.env.APP_URL}/login`,
-            clientId: process.env.KEYCLOAK_CLIENT_ID,
-            lifespan: 3600 // 1 hour
-          });
-
-          console.log(`✅ Password reset email triggered for ${email}`);
-        } catch (executeError) {
-          console.error(`⚠️ Error executing password reset action for ${email}:`, executeError.message);
-          // Still return 200 to prevent email enumeration
-        }
-      }
-
-      // Always return 200 (security: don't reveal if email exists)
-      return res.status(200).json({
-        success: true,
-        message: 'Si cette adresse existe, un email a été envoyé.'
-      });
-    } catch (error) {
-      console.error('❌ Forgot password error:', error.message);
-      // Still return 200 on error (security)
-      return res.status(200).json({
-        success: true,
-        message: 'Si cette adresse existe, un email a été envoyé.'
-      });
-    }
-  },
 
   /**
    * Create gestionnaire account
