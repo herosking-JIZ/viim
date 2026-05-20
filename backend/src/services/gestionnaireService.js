@@ -2,6 +2,7 @@ const { prisma } = require('../config/db')
 const bcrypt = require('bcrypt')
 const EmailService = require('./emailService')
 const { generateInitialPassword } = require('../utils/passwordGenerator')
+const KcAdminClient = require('@keycloak/keycloak-admin-client').default
 
 const GestionnaireService = {
   /**
@@ -77,6 +78,75 @@ const GestionnaireService = {
 
       return user
     })
+
+    // Create user in Keycloak
+    let keycloak_id = null
+    try {
+      const kcAdminClient = new KcAdminClient({
+        baseUrl: process.env.KEYCLOAK_URL,
+        realmName: process.env.KEYCLOAK_REALM
+      })
+
+      await kcAdminClient.auth({
+        clientId: process.env.KEYCLOAK_CLIENT_ID,
+        clientSecret: process.env.KEYCLOAK_CLIENT_SECRET,
+        grant_type: 'client_credentials'
+      })
+
+      const keycloakUser = await kcAdminClient.users.create({
+        realm: process.env.KEYCLOAK_REALM,
+        username: gestionnaire.email,
+        email: gestionnaire.email,
+        firstName: gestionnaire.prenom,
+        lastName: gestionnaire.nom,
+        enabled: true,
+        credentials: [
+          {
+            type: 'password',
+            value: tempPassword,
+            temporary: true
+          }
+        ]
+      })
+
+      keycloak_id = keycloakUser.id
+
+      // Assign ndjigi-gestionnaire role
+      const role = await kcAdminClient.roles.findOneByName({
+        realm: process.env.KEYCLOAK_REALM,
+        name: 'ndjigi-gestionnaire'
+      })
+
+      if (role) {
+        await kcAdminClient.users.addRealmRoleMappings({
+          realm: process.env.KEYCLOAK_REALM,
+          id: keycloak_id,
+          roles: [role]
+        })
+      }
+
+      // Update gestionnaire with keycloak_id
+      await prisma.utilisateur.update({
+        where: { id_utilisateur: gestionnaire.id_utilisateur },
+        data: { keycloak_id, auth_provider: 'keycloak' }
+      })
+
+      console.log(`✅ [KEYCLOAK_CREATED] gestionnaire=${gestionnaire.id_utilisateur} keycloak_id=${keycloak_id}`)
+    } catch (keycloakErr) {
+      console.error('❌ Keycloak creation failed:', keycloakErr.message)
+      // Delete from PostgreSQL to avoid orphaned user
+      try {
+        await prisma.utilisateur.delete({
+          where: { id_utilisateur: gestionnaire.id_utilisateur }
+        })
+        await prisma.gestionnaire_parking.deleteMany({
+          where: { id_gestionnaire: gestionnaire.id_utilisateur }
+        })
+      } catch (cleanupErr) {
+        console.error('❌ Cleanup failed:', cleanupErr.message)
+      }
+      throw keycloakErr
+    }
 
     // Send welcome email with temporary password
     try {
