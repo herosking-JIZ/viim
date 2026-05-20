@@ -12,6 +12,7 @@
 
 const { verifyKeycloakToken } = require('../config/keycloak');
 const { prisma } = require('../config/db');
+const { ROLE_MAPPING, getLocalRole } = require('../constants/roles');
 
 const keycloakAuth = async (req, res, next) => {
   try {
@@ -96,18 +97,13 @@ const keycloakAuth = async (req, res, next) => {
       console.log(`  ✅ User créé: ${user.id_utilisateur}`);
     }
 
-    // 5️⃣ Extraire les rôles du token Keycloak
-    const kcRoles = realmAccess.roles || [];
-    const validAppRoles = [
-      'ndjigi-admin',
-      'ndjigi-gestionnaire',
-      'ndjigi-chauffeur',
-      'ndjigi-passager',
-      'ndjigi-proprietaire'
-    ];
+    // 5️⃣ Extraire et convertir les rôles du token Keycloak
+    const kcRealmRoles = realmAccess.roles || [];
 
-    // Filtrer uniquement les rôles valides
-    const userRoles = kcRoles.filter((r) => validAppRoles.includes(r));
+    // Convertir les rôles Keycloak realm (ndjigi-*) en rôles locaux (admin, gestionnaire, etc.)
+    const localRoles = kcRealmRoles
+      .map(kcRole => getLocalRole(kcRole))
+      .filter(role => role !== null); // Exclure les rôles invalides
 
     // 6️⃣ Attacher l'utilisateur à la requête
     req.user = {
@@ -118,10 +114,10 @@ const keycloakAuth = async (req, res, next) => {
       prenom: user.prenom,
       numero_telephone: user.numero_telephone,
       photo_profil: user.photo_profil,
-      roles: userRoles.length > 0 ? userRoles : ['ndjigi-passager'],
+      roles: localRoles, // Rôles depuis Keycloak token (source de vérité)
       auth_provider: 'keycloak',
       utilisateur_role: user.utilisateur_role,
-      token: token // Garder le token pour les appels Admin API en Phase 2+
+      token: token // Garder le token pour les appels Admin API
     };
 
     next();

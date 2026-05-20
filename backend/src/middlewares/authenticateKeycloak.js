@@ -5,6 +5,7 @@
 const jwt = require('jsonwebtoken');
 const { prisma } = require('../config/db');
 const { getRedisClient } = require('../config/redis');
+const { getLocalRole } = require('../constants/roles');
 const redis = getRedisClient();
 
 /**
@@ -126,12 +127,14 @@ const authenticateKeycloak = async (req, res, next) => {
       });
     }
 
-    // 8. Extraire les rôles depuis Keycloak ou depuis la base de données
-    const keycloakRoles = payload.realm_access?.roles || [];
-    const dbRoles = user.utilisateur_role?.map(r => r.role) || [];
+    // 8. Extraire et convertir les rôles depuis le token Keycloak
+    // Keycloak token contient les rôles realm (ndjigi-admin, ndjigi-gestionnaire, etc.)
+    const keycloakRealmRoles = payload.realm_access?.roles || [];
 
-    // Fusionner les rôles (priorité à ceux de Keycloak)
-    const roles = [...new Set([...keycloakRoles, ...dbRoles])];
+    // Convertir les rôles Keycloak realm en rôles locaux (admin, gestionnaire, etc.)
+    const roles = keycloakRealmRoles
+      .map(kcRole => getLocalRole(kcRole))
+      .filter(role => role !== null); // Exclure les rôles invalides
 
     // 9. Attacher l'utilisateur à la requête
     const { mot_de_passe_hash, ...userSafe } = user;

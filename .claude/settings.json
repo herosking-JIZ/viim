@@ -19,7 +19,9 @@
       "Bash(docker-compose up *)",
       "Bash(docker-compose restart *)",
       "PowerShell(ls 'C:\\\\Users\\\\Kader SAWADOGO\\\\Desktop\\\\ndjigiv1\\\\backend\\\\prisma\\\\migrations\\\\')",
-      "Bash(npm uninstall *)"
+      "Bash(npm uninstall *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Kader SAWADOGO\\\\Desktop\\\\ndjigiv1\" -Directory)",
+      "Bash(Select-Object Name)"
     ]
   }
 }
