@@ -6,6 +6,8 @@
 
 const { prisma } = require('../config/db');
 const bcrypt = require('bcryptjs');
+const userProvisioningService = require('../services/userProvisioningService');
+const ProvisioningError = require('../errors/ProvisioningError');
 
 // ─────────────────────────────────────────────────────────────
 // Helpers
@@ -633,13 +635,12 @@ const UtilisateurController = {
   // Créer un nouvel utilisateur (IT/Admin seulement)
   // IT: peut créer passager, chauffeur, proprietaire
   // Admin: peut créer gestionnaire, admin + les rôles finaux
+  // Uses atomic userProvisioningService for Keycloak + PG sync
   // ──────────────────────────────────────────────────────────
   async create(req, res) {
     try {
-      const { email, nom, prenom, role, numero_telephone, parking_id } = req.body;
+      const { email, nom, prenom, role, numero_telephone, adresse, id_parking } = req.body;
       const creatorRoles = req.user.utilisateur_role.map(r => r.role);
-      const keycloakService = require('../services/keycloakService');
-      const crypto = require('crypto');
 
       // Validation des champs obligatoires
       if (!email || !nom || !prenom || !role || !numero_telephone) {
@@ -652,22 +653,12 @@ const UtilisateurController = {
       }
 
       // Gestionnaire requiert un parking
-      if (role === 'gestionnaire' && !parking_id) {
+      if (role === 'gestionnaire' && !id_parking) {
         return res.status(400).json({
           success: false,
           message: 'Un parking doit être assigné au gestionnaire.',
           data: null,
           errors: { code: 'MISSING_PARKING' }
-        });
-      }
-
-      const rolesValides = ['passager', 'chauffeur', 'proprietaire', 'gestionnaire', 'admin'];
-      if (!rolesValides.includes(role)) {
-        return res.status(400).json({
-          success: false,
-          message: `Rôle invalide. Rôles acceptés: ${rolesValides.join(', ')}.`,
-          data: null,
-          errors: { code: 'INVALID_ROLE', acceptedValues: rolesValides }
         });
       }
 
@@ -692,200 +683,36 @@ const UtilisateurController = {
         });
       }
 
-      // Vérifier que l'email n'existe pas déjà en BD locale
-      const existingLocalEmail = await prisma.utilisateur.findUnique({
-        where: { email }
-      });
-      if (existingLocalEmail) {
-        return res.status(409).json({
-          success: false,
-          message: 'Un compte avec cet email existe déjà.',
-          data: null,
-          errors: { field: 'email', code: 'DUPLICATE_EMAIL' }
-        });
-      }
-
-      // Vérifier que l'email n'existe pas dans Keycloak
-      try {
-        const kcUsers = await keycloakService.adminAPI.users.find({
-          realm: process.env.KEYCLOAK_REALM,
-          email: email,
-          exact: true
-        });
-        if (kcUsers.length > 0) {
-          return res.status(409).json({
-            success: false,
-            message: 'Un compte avec cet email existe déjà dans Keycloak.',
-            data: null,
-            errors: { field: 'email', code: 'DUPLICATE_EMAIL_KC' }
-          });
-        }
-      } catch (kcError) {
-        console.warn('⚠️ Could not check Keycloak for duplicate email:', kcError.message);
-      }
-
       // Vérifier le parking si spécifié
-      if (parking_id) {
+      if (id_parking) {
         const parking = await prisma.parking.findUnique({
-          where: { id_parking: parking_id }
+          where: { id_parking }
         });
         if (!parking) {
           return res.status(400).json({
             success: false,
             message: 'Le parking spécifié n\'existe pas.',
             data: null,
-            errors: { field: 'parking_id', code: 'INVALID_PARKING' }
+            errors: { field: 'id_parking', code: 'INVALID_PARKING' }
           });
         }
       }
 
-      // Générer mot de passe temporaire
-      const tempPassword = crypto.randomBytes(6).toString('hex').substring(0, 12);
-
-      // Mapper le rôle pour Keycloak
-      const roleMapping = {
-        'admin': 'ndjigi-admin',
-        'gestionnaire': 'ndjigi-gestionnaire',
-        'passager': 'ndjigi-passager',
-        'chauffeur': 'ndjigi-chauffeur',
-        'proprietaire': 'ndjigi-proprietaire'
-      };
-      const kcRoleName = roleMapping[role] || role;
-
-      // 1️⃣ Créer dans Keycloak
-      let keycloak_id;
-      try {
-        const kcUser = await keycloakService.adminAPI.users.create({
-          realm: process.env.KEYCLOAK_REALM,
-          body: {
-            email: email,
-            emailVerified: false,
-            firstName: prenom,
-            lastName: nom,
-            enabled: true,
-            attributes: {
-              phone: numero_telephone
-            },
-            requiredActions: ['UPDATE_PASSWORD'],
-            credentials: [
-              {
-                type: 'password',
-                value: tempPassword,
-                temporary: true
-              }
-            ]
-          }
-        });
-        keycloak_id = kcUser.id;
-        console.log(`✅ Keycloak user created: ${keycloak_id}`);
-      } catch (kcCreateError) {
-        console.error('❌ Keycloak user creation error:', kcCreateError.message);
-        return res.status(500).json({
-          success: false,
-          message: 'Erreur lors de la création du compte dans Keycloak.',
-          data: null,
-          errors: kcCreateError.message
-        });
-      }
-
-      // 2️⃣ Assigner le rôle dans Keycloak
-      try {
-        const kcRole = await keycloakService.adminAPI.roles.findOneByName({
-          realm: process.env.KEYCLOAK_REALM,
-          name: kcRoleName
-        });
-
-        if (kcRole) {
-          await keycloakService.adminAPI.users.addRealmRoleMappings({
-            realm: process.env.KEYCLOAK_REALM,
-            id: keycloak_id,
-            roles: [kcRole]
-          });
-          console.log(`✅ Keycloak role assigned: ${kcRoleName}`);
+      // Use userProvisioningService for atomic user creation
+      const newUser = await userProvisioningService.create({
+        email,
+        nom,
+        prenom,
+        role,
+        numero_telephone,
+        adresse: adresse || null,
+        metadata: id_parking ? { id_parking } : {},
+        sendInvitationEmail: true,
+        createdBy: {
+          id_utilisateur: req.user.id_utilisateur,
+          role: creatorRoles[0]
         }
-      } catch (kcRoleError) {
-        console.warn(`⚠️ Could not assign Keycloak role ${kcRoleName}:`, kcRoleError.message);
-      }
-
-      // 3️⃣ Créer en BD locale
-      const newUser = await prisma.$transaction(async (tx) => {
-        const user = await tx.utilisateur.create({
-          data: {
-            keycloak_id,
-            email,
-            nom,
-            prenom,
-            numero_telephone,
-            auth_provider: 'keycloak',
-            statut_compte: 'actif',
-            utilisateur_role: {
-              create: {
-                role,
-                actif: true
-              }
-            }
-          },
-          include: {
-            utilisateur_role: { where: { actif: true } }
-          }
-        });
-
-        // Créer les enregistrements associés au rôle
-        if (role === 'passager') {
-          await tx.passager.create({
-            data: { id_passager: user.id_utilisateur }
-          });
-        }
-        if (role === 'chauffeur') {
-          await tx.chauffeur.create({
-            data: {
-              id_chauffeur: user.id_utilisateur,
-              type_service: 'vtc',
-              statut_validation: 'en_attente'
-            }
-          });
-        }
-        if (role === 'proprietaire') {
-          await tx.proprietaire.create({
-            data: { id_proprietaire: user.id_utilisateur }
-          });
-        }
-        if (role === 'gestionnaire' && parking_id) {
-          await tx.gestionnaire_parking.create({
-            data: {
-              id_gestionnaire: user.id_utilisateur,
-              id_parking: parking_id,
-              date_prise_poste: new Date()
-            }
-          });
-        }
-
-        // Créer le portefeuille
-        await tx.portefeuille.create({
-          data: { id_utilisateur: user.id_utilisateur }
-        });
-
-        return user;
       });
-
-      // 4️⃣ Envoyer email d'invitation
-      try {
-        const emailService = require('../services/emailService');
-        const appUrl = process.env.APP_URL || 'http://localhost:3000';
-
-        await emailService.sendUserInvitation(email, {
-          nom,
-          prenom,
-          role,
-          tempPassword,
-          appUrl,
-          parkingName: parking_id ? `(Parking assigné: ${parking_id})` : ''
-        });
-        console.log(`✅ Invitation email sent to ${email}`);
-      } catch (emailError) {
-        console.warn(`⚠️ Could not send invitation email to ${email}:`, emailError.message);
-        // Don't fail the request if email fails
-      }
 
       console.log(`✅ User created: ${newUser.id_utilisateur}, role: ${role}, by: ${req.user.id_utilisateur}`);
 
@@ -894,18 +721,60 @@ const UtilisateurController = {
         message: `Utilisateur créé avec succès. Un email d'invitation a été envoyé à ${email}.`,
         data: {
           id_utilisateur: newUser.id_utilisateur,
-          keycloak_id: keycloak_id,
+          keycloak_id: newUser.keycloak_id,
           email: newUser.email,
           nom: newUser.nom,
           prenom: newUser.prenom,
           numero_telephone: newUser.numero_telephone,
-          role: role,
-          statut_compte: newUser.statut_compte,
-          date_inscription: newUser.date_inscription
+          role: newUser.role,
+          tempPassword: newUser.tempPassword
         },
         errors: null
       });
     } catch (error) {
+      if (error instanceof ProvisioningError) {
+        // Handle typed provisioning errors
+        if (error.code === 'EMAIL_EXISTS') {
+          return res.status(409).json({
+            success: false,
+            message: 'Un compte avec cet email existe déjà.',
+            data: null,
+            errors: { field: 'email', code: error.code }
+          });
+        }
+        if (error.code === 'INVALID_ROLE') {
+          return res.status(400).json({
+            success: false,
+            message: error.message,
+            data: null,
+            errors: { code: error.code, details: error.details }
+          });
+        }
+        if (error.code === 'KEYCLOAK_ERROR') {
+          return res.status(500).json({
+            success: false,
+            message: 'Erreur lors de la création du compte dans Keycloak.',
+            data: null,
+            errors: { code: error.code, originalError: error.details.originalError }
+          });
+        }
+        if (error.code === 'ROLLBACK_FAILED') {
+          return res.status(500).json({
+            success: false,
+            message: 'Erreur critique: veuillez contacter l\'administrateur.',
+            data: null,
+            errors: { code: error.code, details: error.details }
+          });
+        }
+        // Generic provisioning error
+        return res.status(500).json({
+          success: false,
+          message: error.message,
+          data: null,
+          errors: { code: error.code, details: error.details }
+        });
+      }
+
       console.error('[utilisateur.create]', error);
       return res.status(500).json({
         success: false,
