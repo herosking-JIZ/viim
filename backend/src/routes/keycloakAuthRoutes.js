@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ROUTES/KEYCLOAKAUTH ROUTES.JS
  * Routes pour Keycloak authentication (Phase 1+)
  *
@@ -7,8 +7,8 @@
  *  POST /auth/refresh - Refresh access token
  *  POST /auth/logout  - Logout
  *
- * Ces routes fonctionnent EN PARALLÈLE avec les anciennes routes JWT
- * jusqu'à ce qu'elles soient supprimées en Phase 4
+ * Ces routes fonctionnent EN PARALLÃˆLE avec les anciennes routes JWT
+ * jusqu'Ã  ce qu'elles soient supprimÃ©es en Phase 4
  */
 
 const express = require('express');
@@ -18,6 +18,10 @@ const KeycloakAuthController = require('../controllers/keycloakAuthController');
 const AuthController = require('../controllers/authController');
 const InvitationController = require('../controllers/invitationController');
 const { forgotPasswordRules, resetPasswordRules } = require('../validators/authValidator');
+const {
+  forgotPasswordRateLimit,
+  resetPasswordRateLimit
+} = require('../middlewares/forgotPasswordRateLimit');
 const joiValidate = require('../middlewares/validate.middleware');
 const { firstConnectionSchema, resendInvitationSchema } = require('../validators/gestionnaireValidation');
 const { authenticate } = require('../middlewares/authenticate');
@@ -31,24 +35,13 @@ const loginLimiter = rateLimit({
   max: 10,
   message: {
     success: false,
-    message: 'Trop de tentatives. Réessayez dans 15 minutes.',
+    message: 'Trop de tentatives. RÃ©essayez dans 15 minutes.',
     code: 'RATE_LIMIT'
   },
   standardHeaders: true,
   legacyHeaders: false
 });
 
-// Rate limiting pour forgot password
-const forgotPasswordLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 5,
-  message: {
-    success: false,
-    message: 'Trop de demandes. Réessayez dans 1 heure.'
-  },
-  standardHeaders: true,
-  legacyHeaders: false
-});
 
 // Rate limiting pour OTP request (1 per 60s per phone, max 5 per 24h)
 const otpRequestLimiter = rateLimit({
@@ -71,7 +64,7 @@ const otpDailyLimiter = rateLimit({
   max: 5,
   message: {
     success: false,
-    message: 'Limite quotidienne atteinte. Réessayez demain.',
+    message: 'Limite quotidienne atteinte. RÃ©essayez demain.',
     code: 'OTP_DAILY_LIMIT'
   },
   standardHeaders: false,
@@ -81,7 +74,7 @@ const otpDailyLimiter = rateLimit({
 /**
  * POST /auth/local/login
  * Body: { email, password }
- * Réponse: { access_token, refresh_token, user, expires_in, mot_de_passe_temporaire }
+ * RÃ©ponse: { access_token, refresh_token, user, expires_in, mot_de_passe_temporaire }
  * Used for: gestionnaires, admins, and other local email/password users
  */
 router.post('/local/login', loginLimiter, async (req, res) => {
@@ -93,7 +86,7 @@ router.post('/local/login', loginLimiter, async (req, res) => {
  * Change temporary password to permanent password
  * Auth: Bearer token required
  * Body: { ancien_mot_de_passe, nouveau_mot_de_passe }
- * Réponse: { success: true, data: { id_utilisateur } }
+ * RÃ©ponse: { success: true, data: { id_utilisateur } }
  */
 router.post('/change-temporary-password', authenticate, async (req, res) => {
   await AuthController.changeTemporaryPassword(req, res);
@@ -102,7 +95,7 @@ router.post('/change-temporary-password', authenticate, async (req, res) => {
 /**
  * POST /auth/login
  * Body: { email, password }
- * Réponse: { access_token, refresh_token, user, expires_in } (Keycloak)
+ * RÃ©ponse: { access_token, refresh_token, user, expires_in } (Keycloak)
  * Fallback if Keycloak auth fails - tries local auth
  */
 router.post('/login', loginLimiter, async (req, res) => {
@@ -110,7 +103,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     await KeycloakAuthController.login(req, res);
   } catch (error) {
     // If Keycloak login fails, try local login as fallback
-    console.log(`⚠️ Keycloak login failed, trying local auth...`);
+    console.log(`âš ï¸ Keycloak login failed, trying local auth...`);
     await AuthController.localLogin(req, res);
   }
 });
@@ -118,7 +111,7 @@ router.post('/login', loginLimiter, async (req, res) => {
 /**
  * POST /auth/refresh
  * Body: { refresh_token }
- * Réponse: { access_token, expires_in }
+ * RÃ©ponse: { access_token, expires_in }
  */
 router.post('/refresh', async (req, res) => {
   await KeycloakAuthController.refresh(req, res);
@@ -127,7 +120,7 @@ router.post('/refresh', async (req, res) => {
 /**
  * POST /auth/logout
  * Body: { refresh_token }
- * Réponse: { success: true }
+ * RÃ©ponse: { success: true }
  */
 router.post('/logout', async (req, res) => {
   await KeycloakAuthController.logout(req, res);
@@ -136,7 +129,7 @@ router.post('/logout', async (req, res) => {
 /**
  * POST /auth/verify-sms
  * Body: { login_token, sms_code }
- * Réponse: { access_token, refresh_token, user } ou erreur
+ * RÃ©ponse: { access_token, refresh_token, user } ou erreur
  */
 router.post('/verify-sms', async (req, res) => {
   await KeycloakAuthController.verifySms(req, res);
@@ -145,7 +138,7 @@ router.post('/verify-sms', async (req, res) => {
 /**
  * POST /auth/resend-sms
  * Body: { login_token }
- * Réponse: { success: true } ou erreur de cooldown
+ * RÃ©ponse: { success: true } ou erreur de cooldown
  */
 router.post('/resend-sms', async (req, res) => {
   await KeycloakAuthController.resendSms(req, res);
@@ -157,29 +150,29 @@ router.post('/resend-sms', async (req, res) => {
  * Triggers Keycloak password reset email
  * Always returns 200 (prevent email enumeration)
  */
-router.post('/forgot-password', forgotPasswordLimiter, async (req, res) => {
+router.post('/forgot-password', forgotPasswordRateLimit, forgotPasswordRules, async (req, res) => {
   await KeycloakAuthController.forgotPassword(req, res);
 });
 
 /**
  * POST /auth/reset-password
  * Body: { token, newPassword }
- * Réponse: { success: true } ou erreur de token invalide
+ * RÃ©ponse: { success: true } ou erreur de token invalide
  */
-router.post('/reset-password', resetPasswordRules, async (req, res) => {
+router.post('/reset-password', resetPasswordRateLimit, resetPasswordRules, async (req, res) => {
   await KeycloakAuthController.resetPassword(req, res);
 });
 
 /**
  * POST /auth/admin/users
  * Body: { nom, prenom, email, mot_de_passe, role, numero_telephone, adresse, parking_id? }
- * Réponse: { success: true, data: user }
+ * RÃ©ponse: { success: true, data: user }
  */
 router.post('/admin/users', async (req, res) => {
   await KeycloakAuthController.createUserByAdmin(req, res);
 });
 
-// ─── OTP Authentication (Phase 5) ──────────────────────────
+// â”€â”€â”€ OTP Authentication (Phase 5) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * POST /auth/otp/request
@@ -214,7 +207,7 @@ router.post('/otp/resend', async (req, res) => {
   await KeycloakAuthController.otpResend(req, res);
 });
 
-// ─── TOTP 2FA (Phase 6) ──────────────────────────
+// â”€â”€â”€ TOTP 2FA (Phase 6) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // Rate limiting for TOTP setup/verify attempts (prevent brute-force)
 const totpLimiter = rateLimit({
@@ -222,7 +215,7 @@ const totpLimiter = rateLimit({
   max: 10,
   message: {
     success: false,
-    message: 'Trop de tentatives. Réessayez dans 15 minutes.',
+    message: 'Trop de tentatives. RÃ©essayez dans 15 minutes.',
     code: 'TOTP_RATE_LIMIT'
   },
   standardHeaders: false,
@@ -249,7 +242,7 @@ router.post('/totp/verify', totpLimiter, async (req, res) => {
   await KeycloakAuthController.totpVerify(req, res);
 });
 
-// ─── Gestionnaire Invitation System (Public Routes) ────────────
+// â”€â”€â”€ Gestionnaire Invitation System (Public Routes) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * GET /auth/verify-invitation?token=XXX
@@ -274,7 +267,7 @@ const firstConnectionLimiter = rateLimit({
   max: 5,
   message: {
     success: false,
-    message: 'Trop de tentatives. Réessayez dans 15 minutes.',
+    message: 'Trop de tentatives. RÃ©essayez dans 15 minutes.',
     code: 'RATE_LIMIT'
   }
 });
@@ -305,7 +298,7 @@ router.post(
   }
 );
 
-// ─── Admin User Management (Phase 7) ──────────────────────────
+// â”€â”€â”€ Admin User Management (Phase 7) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * POST /api/v1/admin/gestionnaires (Phase 7)
