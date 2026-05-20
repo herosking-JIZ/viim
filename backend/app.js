@@ -7,6 +7,7 @@ const rateLimit = require('express-rate-limit');
 const { connectDB, disconnectDB } = require('./src/config/db');
 const route = require('./src/routes/index');
 const requestLogger = require('./src/middlewares/requestLogger');
+const { cleanupExpiredResetTokens } = require('./src/jobs/cleanupExpiredResetTokens');
 
 const app = express();
 app.set('etag', false);
@@ -17,6 +18,15 @@ const PORT = process.env.PORT || 8000;
 // Connexion à la base de données
 
 connectDB();
+
+setInterval(() => {
+    cleanupExpiredResetTokens().catch((error) => {
+        console.error(JSON.stringify({
+            event: 'cleanup_expired_reset_tokens_failed',
+            error: error.message
+        }));
+    });
+}, 60 * 60 * 1000);
 
 // --- MIDDLEWARES DE SÉCURITÉ ---
 app.use(helmet());
