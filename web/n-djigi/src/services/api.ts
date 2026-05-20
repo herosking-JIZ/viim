@@ -176,7 +176,7 @@ export const authService = {
     if (IS_DEMO) { await delay(500); return }
     const { data } = await api.post<ApiResponse<null>>('/auth/reset-password', {
       token,
-      nouveau_mot_de_passe: newPassword,
+      newPassword,
     })
     extractData(data)
   },

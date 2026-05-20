@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { MapPin, AlertCircle, CheckCircle, Loader2, ArrowLeft } from 'lucide-react'
 import { authService } from '@/services/api'
@@ -17,7 +17,7 @@ export default function ForgotPassword() {
       await authService.forgotPassword(email)
       setSent(true)
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || 'Une erreur est survenue. Réessayez.')
+      setError(err?.response?.data?.message || err?.message || 'Une erreur est survenue. RÃ©essayez.')
     } finally {
       setLoading(false)
     }
@@ -37,9 +37,9 @@ export default function ForgotPassword() {
             <div className="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center mb-4 shadow-lg shadow-primary/30">
               <MapPin className="h-7 w-7 text-white" />
             </div>
-            <h1 className="font-display text-2xl font-bold">Mot de passe oublié</h1>
+            <h1 className="font-display text-2xl font-bold">Mot de passe oubliÃ©</h1>
             <p className="text-sm text-muted-foreground mt-1 text-center">
-              Entrez votre email pour recevoir un lien de réinitialisation
+              Entrez votre email pour recevoir un lien de rÃ©initialisation
             </p>
           </div>
 
@@ -51,9 +51,9 @@ export default function ForgotPassword() {
                 </div>
               </div>
               <div>
-                <p className="font-semibold">Email envoyé !</p>
+                <p className="font-semibold">Email envoyÃ© !</p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Un lien de réinitialisation a été envoyé à <strong>{email}</strong>. Vérifiez votre boîte mail (et les spams).
+                  Si cette adresse existe, un email de reinitialisation a ete envoye. Verifiez votre boite mail (et les spams).
                 </p>
               </div>
               <Link
@@ -61,7 +61,7 @@ export default function ForgotPassword() {
                 className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
               >
                 <ArrowLeft className="h-4 w-4" />
-                Retour à la connexion
+                Retour Ã  la connexion
               </Link>
             </div>
           ) : (
@@ -102,7 +102,7 @@ export default function ForgotPassword() {
                   className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <ArrowLeft className="h-4 w-4" />
-                  Retour à la connexion
+                  Retour Ã  la connexion
                 </Link>
               </div>
             </>
@@ -112,3 +112,4 @@ export default function ForgotPassword() {
     </div>
   )
 }
+

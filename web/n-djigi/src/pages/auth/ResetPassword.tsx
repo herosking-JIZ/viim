@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { MapPin, AlertCircle, CheckCircle, Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react'
 import { authService } from '@/services/api'
@@ -15,22 +15,20 @@ export default function ResetPassword() {
   const [showConfirm, setShowConfirm] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [violations, setViolations] = useState<string[]>([])
   const [done, setDone] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setViolations([])
 
-    if (password.length < 8) {
-      setError('Le mot de passe doit contenir au moins 8 caractères.')
-      return
-    }
     if (password !== confirm) {
       setError('Les mots de passe ne correspondent pas.')
       return
     }
     if (!token) {
-      setError('Lien de réinitialisation invalide ou expiré.')
+      setError('Lien de reinitialisation invalide ou expire.')
       return
     }
 
@@ -38,10 +36,14 @@ export default function ResetPassword() {
     try {
       await authService.resetPassword(token, password)
       setDone(true)
-      // Rediriger vers login après 3 secondes
-      setTimeout(() => navigate('/login'), 3000)
+      sessionStorage.setItem('auth_flash_success', 'Mot de passe modifie avec succes. Connectez-vous avec votre nouveau mot de passe.')
+      setTimeout(() => navigate('/login'), 1500)
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || 'Lien expiré ou invalide. Recommencez la procédure.')
+      const backendViolations = err?.response?.data?.errors?.violations
+      if (Array.isArray(backendViolations)) {
+        setViolations(backendViolations)
+      }
+      setError(err?.response?.data?.message || err?.message || 'Lien expire ou invalide. Recommencez la procedure.')
     } finally {
       setLoading(false)
     }
@@ -53,7 +55,7 @@ export default function ResetPassword() {
         <div className="bg-card rounded-2xl border border-border shadow-2xl p-8 w-full max-w-md text-center space-y-4">
           <AlertCircle className="h-12 w-12 text-destructive mx-auto" />
           <p className="font-semibold">Lien invalide</p>
-          <p className="text-sm text-muted-foreground">Ce lien de réinitialisation est invalide ou a expiré.</p>
+          <p className="text-sm text-muted-foreground">Ce lien de reinitialisation est invalide ou a expire.</p>
           <Link to="/auth/forgot-password" className="inline-block text-sm text-primary hover:underline">
             Demander un nouveau lien
           </Link>
@@ -77,7 +79,7 @@ export default function ResetPassword() {
             </div>
             <h1 className="font-display text-2xl font-bold">Nouveau mot de passe</h1>
             <p className="text-sm text-muted-foreground mt-1 text-center">
-              Choisissez un mot de passe sécurisé (minimum 8 caractères)
+              Choisissez un mot de passe securise (minimum 12 caracteres)
             </p>
           </div>
 
@@ -89,9 +91,9 @@ export default function ResetPassword() {
                 </div>
               </div>
               <div>
-                <p className="font-semibold">Mot de passe modifié !</p>
+                <p className="font-semibold">Mot de passe modifie !</p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Vous allez être redirigé vers la page de connexion…
+                  Vous allez etre redirige vers la page de connexion...
                 </p>
               </div>
             </div>
@@ -103,6 +105,16 @@ export default function ResetPassword() {
                   <span>{error}</span>
                 </div>
               )}
+              {violations.length > 0 && (
+                <div className="mb-5 rounded-xl bg-destructive/10 border border-destructive/30 px-4 py-3 text-sm text-destructive">
+                  <p className="font-semibold mb-2">Regles non respectees :</p>
+                  <ul className="list-disc pl-4 space-y-1">
+                    {violations.map((violation) => (
+                      <li key={violation}>{violation}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
@@ -112,9 +124,9 @@ export default function ResetPassword() {
                       type={showPwd ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
+                      placeholder="********"
                       required
-                      minLength={8}
+                      minLength={12}
                       autoComplete="new-password"
                       className="w-full rounded-xl border border-input bg-background px-3.5 py-2.5 pr-10 text-sm outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all placeholder:text-muted-foreground"
                     />
@@ -130,7 +142,7 @@ export default function ResetPassword() {
                       type={showConfirm ? 'text' : 'password'}
                       value={confirm}
                       onChange={(e) => setConfirm(e.target.value)}
-                      placeholder="••••••••"
+                      placeholder="********"
                       required
                       autoComplete="new-password"
                       className="w-full rounded-xl border border-input bg-background px-3.5 py-2.5 pr-10 text-sm outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all placeholder:text-muted-foreground"
@@ -156,7 +168,7 @@ export default function ResetPassword() {
               <div className="mt-5 text-center">
                 <Link to="/login" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
                   <ArrowLeft className="h-4 w-4" />
-                  Retour à la connexion
+                  Retour a la connexion
                 </Link>
               </div>
             </>

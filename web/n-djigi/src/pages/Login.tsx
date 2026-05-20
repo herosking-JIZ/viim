@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { MapPin, AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { MapPin, AlertCircle, Eye, EyeOff, Loader2, CheckCircle } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { getRoleRedirectUrl, ACCESS_ERROR_MESSAGES } from '@/utils/roleRedirect'
 
@@ -10,12 +10,22 @@ export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [successMessage, setSuccessMessage] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    const flash = sessionStorage.getItem('auth_flash_success')
+    if (flash) {
+      setSuccessMessage(flash)
+      sessionStorage.removeItem('auth_flash_success')
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setSuccessMessage('')
     setLoading(true)
     try {
       await login(email, password)
@@ -77,6 +87,12 @@ export default function Login() {
           </div>
 
           {/* Error */}
+          {successMessage && (
+            <div className="mb-5 flex items-center gap-2 rounded-xl bg-success/10 border border-success/30 text-success px-4 py-3 text-sm animate-fade-in">
+              <CheckCircle className="h-4 w-4 shrink-0" />
+              <span>{successMessage}</span>
+            </div>
+          )}
           {error && (
             <div className="mb-5 flex items-center gap-2 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive px-4 py-3 text-sm animate-fade-in">
               <AlertCircle className="h-4 w-4 shrink-0" />
