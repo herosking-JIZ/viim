@@ -1,0 +1,437 @@
+/**
+ * SERVICES/USERPROVISIONINGSERVICE.JS
+ * Core service for atomic user creation across Keycloak + PostgreSQL
+ *
+ * Architecture:
+ * 1. Create user in Keycloak (obtain keycloak_id)
+ * 2. Create user in PostgreSQL with keycloak_id (atomic transaction)
+ * 3. If PG fails → rollback Keycloak user
+ * 4. If rollback fails → log CRITICAL for manual cleanup
+ */
+
+const crypto = require('crypto');
+const { prisma } = require('../config/db');
+const keycloakService = require('./keycloakService');
+const EmailService = require('./emailService');
+const ProvisioningError = require('../errors/ProvisioningError');
+const { ROLE_MAPPING, getKeycloakRole } = require('../constants/roles');
+
+/**
+ * Generate a strong temporary password (12 chars: uppercase, lowercase, digit, special)
+ * @returns {string} e.g., "Ax#9Kp@2Lm4"
+ */
+function generateTempPassword() {
+  const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+  const digits = '0123456789';
+  const special = '!@#$%^&*';
+
+  const allChars = uppercase + lowercase + digits + special;
+
+  // Ensure at least one of each type
+  let password = '';
+  password += uppercase[Math.floor(Math.random() * uppercase.length)];
+  password += lowercase[Math.floor(Math.random() * lowercase.length)];
+  password += digits[Math.floor(Math.random() * digits.length)];
+  password += special[Math.floor(Math.random() * special.length)];
+
+  // Fill the rest randomly
+  for (let i = 4; i < 12; i++) {
+    password += allChars[Math.floor(Math.random() * allChars.length)];
+  }
+
+  // Shuffle
+  return password.split('').sort(() => Math.random() - 0.5).join('');
+}
+
+/**
+ * Normalize email (trim, lowercase)
+ * @param {string} email
+ * @returns {string}
+ */
+function normalizeEmail(email) {
+  return (email || '').trim().toLowerCase();
+}
+
+/**
+ * Create a user provisioning operation (Keycloak + PostgreSQL)
+ *
+ * @param {object} params
+ * @param {string} params.email - User email (required)
+ * @param {string} params.prenom - First name (required)
+ * @param {string} params.nom - Last name (required)
+ * @param {string} params.role - Local role name: 'admin'|'gestionnaire'|'chauffeur'|'passager'|'proprietaire' (required)
+ * @param {string} [params.numero_telephone] - Phone number (optional)
+ * @param {string} [params.adresse] - Address (optional)
+ * @param {object} [params.metadata] - Role-specific metadata: { id_parking, type_service, ... } (optional)
+ * @param {boolean} [params.sendInvitationEmail=true] - Send welcome email (optional)
+ * @param {object} [params.createdBy] - { id_utilisateur, role } for audit logging (optional)
+ * @param {boolean} [params.systemUser=false] - System user (skip KC creation, set keycloak_id='SYSTEM_NO_AUTH') (optional)
+ * @param {object} [params.prismaTx] - Prisma transaction handle (optional, for nested operations)
+ *
+ * @returns {Promise<{
+ *   id_utilisateur: string,
+ *   keycloak_id: string,
+ *   email: string,
+ *   prenom: string,
+ *   nom: string,
+ *   role: string,
+ *   tempPassword?: string
+ * }>}
+ *
+ * @throws {ProvisioningError} with code:
+ *   - 'EMAIL_EXISTS': Email already exists in PG or KC
+ *   - 'KEYCLOAK_ERROR': Keycloak user creation failed
+ *   - 'PG_ERROR': PostgreSQL user creation failed
+ *   - 'ROLLBACK_FAILED': Keycloak rollback failed (manual cleanup needed)
+ */
+async function create(params) {
+  const {
+    email: rawEmail,
+    prenom,
+    nom,
+    role,
+    numero_telephone,
+    adresse,
+    metadata = {},
+    sendInvitationEmail = true,
+    createdBy = {},
+    systemUser = false,
+    prismaTx = null,
+  } = params;
+
+  // Normalize inputs
+  const email = normalizeEmail(rawEmail);
+  const tx = prismaTx || prisma;
+
+  // ─── Step 1: Validate inputs ────────────────────────────────────
+  console.log(JSON.stringify({
+    event: 'user_provisioning_start',
+    email_normalized: email,
+    role,
+    system_user: systemUser,
+    timestamp: new Date().toISOString(),
+  }));
+
+  if (!email || !prenom || !nom || !role) {
+    throw new ProvisioningError(
+      'VALIDATION_ERROR',
+      'Missing required fields: email, prenom, nom, role',
+      { email, prenom, nom, role }
+    );
+  }
+
+  if (!Object.values(ROLE_MAPPING).includes(role)) {
+    const validRoles = Object.values(ROLE_MAPPING).join(', ');
+    throw new ProvisioningError(
+      'INVALID_ROLE',
+      `Invalid role "${role}". Valid roles: ${validRoles}`,
+      { role, validRoles }
+    );
+  }
+
+  // ─── Step 2: Early check — email doesn't exist in PG ────────────
+  try {
+    const existingPgUser = await tx.utilisateur.findUnique({ where: { email } });
+    if (existingPgUser) {
+      throw new ProvisioningError(
+        'EMAIL_EXISTS',
+        `User with email "${email}" already exists in PostgreSQL`,
+        { email, existing_id: existingPgUser.id_utilisateur }
+      );
+    }
+  } catch (err) {
+    if (err instanceof ProvisioningError) throw err;
+    throw new ProvisioningError(
+      'PG_ERROR',
+      `Database query failed during email check: ${err.message}`,
+      { originalError: err.message }
+    );
+  }
+
+  let keycloak_id = null;
+  let tempPassword = null;
+
+  // ─── Step 3: Create in Keycloak (unless systemUser) ─────────────
+  if (!systemUser) {
+    try {
+      console.log(JSON.stringify({
+        event: 'keycloak_user_create_start',
+        email,
+        role,
+        timestamp: new Date().toISOString(),
+      }));
+
+      tempPassword = generateTempPassword();
+      const kcRoleName = getKeycloakRole(role);
+
+      const keycloakUser = await keycloakService.adminAPI.users.create({
+        realm: process.env.KEYCLOAK_REALM,
+        body: {
+          email,
+          emailVerified: false,
+          firstName: prenom,
+          lastName: nom,
+          enabled: true,
+          attributes: numero_telephone ? { phone: numero_telephone } : {},
+          credentials: [
+            {
+              type: 'password',
+              value: tempPassword,
+              temporary: true,
+            },
+          ],
+          requiredActions: ['UPDATE_PASSWORD'],
+        },
+      });
+
+      keycloak_id = keycloakUser.id;
+      console.log(JSON.stringify({
+        event: 'keycloak_user_created',
+        email,
+        keycloak_id,
+        timestamp: new Date().toISOString(),
+      }));
+
+      // ─── Step 3b: Assign realm role in Keycloak ────────────────
+      if (kcRoleName) {
+        try {
+          const kcRole = await keycloakService.adminAPI.roles.findOneByName({
+            realm: process.env.KEYCLOAK_REALM,
+            name: kcRoleName,
+          });
+
+          if (kcRole) {
+            await keycloakService.adminAPI.users.addRealmRoleMappings({
+              realm: process.env.KEYCLOAK_REALM,
+              id: keycloak_id,
+              roles: [kcRole],
+            });
+            console.log(JSON.stringify({
+              event: 'keycloak_role_assigned',
+              email,
+              keycloak_id,
+              role: kcRoleName,
+              timestamp: new Date().toISOString(),
+            }));
+          }
+        } catch (roleErr) {
+          console.warn(JSON.stringify({
+            event: 'keycloak_role_assignment_failed',
+            email,
+            keycloak_id,
+            role: kcRoleName,
+            error: roleErr.message,
+            timestamp: new Date().toISOString(),
+          }));
+          // Don't fail the entire operation if role assignment fails
+          // The user can be re-assigned the role later
+        }
+      }
+    } catch (kcErr) {
+      if (kcErr instanceof ProvisioningError) throw kcErr;
+      throw new ProvisioningError(
+        'KEYCLOAK_ERROR',
+        `Keycloak user creation failed: ${kcErr.message}`,
+        { originalError: kcErr.message, email }
+      );
+    }
+  } else {
+    // System user: use sentinel value
+    keycloak_id = 'SYSTEM_NO_AUTH';
+    console.log(JSON.stringify({
+      event: 'system_user_provisioning',
+      email,
+      keycloak_id,
+      timestamp: new Date().toISOString(),
+    }));
+  }
+
+  // ─── Step 4: Create in PostgreSQL (atomic transaction) ──────────
+  let pgUser = null;
+  try {
+    console.log(JSON.stringify({
+      event: 'pg_user_create_start',
+      email,
+      keycloak_id,
+      role,
+      timestamp: new Date().toISOString(),
+    }));
+
+    pgUser = await tx.utilisateur.create({
+      data: {
+        keycloak_id,
+        email,
+        prenom,
+        nom,
+        numero_telephone: numero_telephone || null,
+        adresse: adresse || null,
+        mot_de_passe_hash: '', // Deprecated: Keycloak is the source of truth
+        auth_provider: 'keycloak',
+        statut_compte: 'actif',
+        created_by: createdBy.id_utilisateur || null,
+        utilisateur_role: {
+          create: {
+            role,
+            actif: true,
+          },
+        },
+      },
+      include: {
+        utilisateur_role: { where: { actif: true } },
+      },
+    });
+
+    console.log(JSON.stringify({
+      event: 'pg_user_created',
+      email,
+      id_utilisateur: pgUser.id_utilisateur,
+      keycloak_id,
+      timestamp: new Date().toISOString(),
+    }));
+
+    // ─── Step 4b: Create role-specific records ─────────────────────
+    if (role === 'gestionnaire' && metadata.id_parking) {
+      await tx.gestionnaire_parking.create({
+        data: {
+          id_gestionnaire: pgUser.id_utilisateur,
+          id_parking: metadata.id_parking,
+          date_prise_poste: new Date(),
+        },
+      });
+      console.log(JSON.stringify({
+        event: 'gestionnaire_parking_linked',
+        id_utilisateur: pgUser.id_utilisateur,
+        id_parking: metadata.id_parking,
+        timestamp: new Date().toISOString(),
+      }));
+    } else if (role === 'passager') {
+      await tx.passager.create({
+        data: { id_passager: pgUser.id_utilisateur },
+      });
+    } else if (role === 'chauffeur') {
+      await tx.chauffeur.create({
+        data: {
+          id_chauffeur: pgUser.id_utilisateur,
+          type_service: metadata.type_service || 'vtc',
+          statut_validation: metadata.statut_validation || 'en_attente',
+        },
+      });
+    } else if (role === 'proprietaire') {
+      await tx.proprietaire.create({
+        data: { id_proprietaire: pgUser.id_utilisateur },
+      });
+    }
+
+    // Create wallet for non-system users
+    if (role !== 'admin' || !systemUser) {
+      await tx.portefeuille.create({
+        data: { id_utilisateur: pgUser.id_utilisateur },
+      });
+    }
+  } catch (pgErr) {
+    // ─── Step 5: If PG fails → Rollback Keycloak ──────────────────
+    if (!systemUser && keycloak_id && keycloak_id !== 'SYSTEM_NO_AUTH') {
+      console.log(JSON.stringify({
+        event: 'pg_error_initiating_rollback',
+        email,
+        keycloak_id,
+        pg_error: pgErr.message,
+        timestamp: new Date().toISOString(),
+      }));
+
+      try {
+        await keycloakService.adminAPI.users.del({
+          realm: process.env.KEYCLOAK_REALM,
+          id: keycloak_id,
+        });
+        console.log(JSON.stringify({
+          event: 'keycloak_rollback_success',
+          email,
+          keycloak_id,
+          timestamp: new Date().toISOString(),
+        }));
+      } catch (rollbackErr) {
+        console.error(JSON.stringify({
+          event: 'rollback_failed_manual_cleanup_required',
+          level: 'CRITICAL',
+          email,
+          keycloak_id,
+          pg_error: pgErr.message,
+          rollback_error: rollbackErr.message,
+          action: `DELETE user ${keycloak_id} from Keycloak manually`,
+          timestamp: new Date().toISOString(),
+        }));
+
+        throw new ProvisioningError(
+          'ROLLBACK_FAILED',
+          `User creation failed in PostgreSQL, and Keycloak rollback also failed. Manual cleanup required.`,
+          {
+            email,
+            keycloak_id,
+            pg_error: pgErr.message,
+            rollback_error: rollbackErr.message,
+          }
+        );
+      }
+    }
+
+    throw new ProvisioningError(
+      'PG_ERROR',
+      `PostgreSQL user creation failed: ${pgErr.message}`,
+      { originalError: pgErr.message, email, keycloak_id }
+    );
+  }
+
+  // ─── Step 6: Send invitation email (non-blocking) ────────────────
+  if (sendInvitationEmail && !systemUser && tempPassword) {
+    try {
+      await EmailService.sendUserInvitation(email, {
+        nom,
+        prenom,
+        role,
+        tempPassword,
+        appUrl: process.env.APP_URL || 'http://localhost:3000',
+      });
+      console.log(JSON.stringify({
+        event: 'invitation_email_sent',
+        email,
+        timestamp: new Date().toISOString(),
+      }));
+    } catch (emailErr) {
+      console.warn(JSON.stringify({
+        event: 'invitation_email_failed',
+        email,
+        error: emailErr.message,
+        timestamp: new Date().toISOString(),
+      }));
+      // Non-blocking: don't fail the entire operation if email fails
+    }
+  }
+
+  // ─── Step 7: Return result ────────────────────────────────────────
+  console.log(JSON.stringify({
+    event: 'user_provisioning_success',
+    email,
+    id_utilisateur: pgUser.id_utilisateur,
+    keycloak_id,
+    role,
+    timestamp: new Date().toISOString(),
+  }));
+
+  return {
+    id_utilisateur: pgUser.id_utilisateur,
+    keycloak_id,
+    email,
+    prenom,
+    nom,
+    role,
+    ...(tempPassword && !systemUser && { tempPassword }),
+  };
+}
+
+module.exports = {
+  create,
+  generateTempPassword,
+  normalizeEmail,
+};
