@@ -18,6 +18,41 @@ function renderTemplate(templateString, data) {
     .replace(/{{(\w+)}}/g, (match, key) => data[key] || '');
 }
 
+function getSupportWhatsapp() {
+  return process.env.SUPPORT_WHATSAPP || '+22606768989';
+}
+
+function getSupportWhatsappNumber() {
+  return getSupportWhatsapp().replace(/\D/g, '');
+}
+
+function buildSupportWhatsappLink() {
+  return `https://wa.me/${getSupportWhatsappNumber()}?text=Bonjour%20N'DJIGI`;
+}
+
+function formatChangedAt(changedAt) {
+  const date = changedAt instanceof Date ? changedAt : new Date(changedAt);
+  return date.toLocaleString('fr-FR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    timeZone: 'UTC'
+  }) + ' UTC';
+}
+
+function simplifyUserAgent(userAgent) {
+  if (!userAgent) return 'Inconnu';
+  if (userAgent.includes('Chrome')) return 'Navigateur Chrome';
+  if (userAgent.includes('Firefox')) return 'Navigateur Firefox';
+  if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) return 'Navigateur Safari';
+  if (userAgent.includes('Edg')) return 'Navigateur Edge';
+  if (userAgent.includes('Mobile')) return 'Appareil mobile';
+  return userAgent.slice(0, 120);
+}
+
 // Initialize nodemailer transporter
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
@@ -358,6 +393,176 @@ L'équipe N'DJIGI
     } catch (error) {
       console.error('❌ Gestionnaire welcome email error:', error.message)
       throw error
+    }
+  },
+
+  /**
+   * Send password reset email (forgot password flow)
+   * @param {string} email
+   * @param {Object} data - { prenom, resetLink, expiresInMinutes, ipAddress }
+   */
+  async sendPasswordResetEmail(email, data) {
+    try {
+      const supportWhatsapp = getSupportWhatsapp();
+      const supportLink = buildSupportWhatsappLink();
+
+      const textContent = `
+Bonjour ${data.prenom},
+
+Vous avez demande la reinitialisation de votre mot de passe.
+
+Lien de reinitialisation:
+${data.resetLink}
+
+Ce lien est valide pendant ${data.expiresInMinutes} minutes.
+Cette demande provient de l'adresse IP ${data.ipAddress}.
+
+Si vous n'etes pas a l'origine de cette demande, ignorez cet email - votre mot de passe restera inchange.
+
+Support WhatsApp: ${supportWhatsapp}
+`;
+
+      const htmlContent = `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reinitialisation du mot de passe - N'DJIGI</title>
+  <style>
+    body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f4f7fb; color: #1f2937; }
+    .container { max-width: 620px; margin: 24px auto; background: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 8px 24px rgba(30, 60, 114, 0.12); }
+    .header { background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: #ffffff; padding: 28px 24px; text-align: center; }
+    .content { padding: 28px 24px; line-height: 1.6; }
+    .cta { text-align: center; margin: 28px 0; }
+    .cta a { display: inline-block; background: #2a5298; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 24px; border-radius: 8px; }
+    .meta { background: #eef3ff; border-left: 4px solid #2a5298; padding: 14px; border-radius: 6px; font-size: 14px; margin-top: 18px; }
+    .warning { background: #fff4e8; border-left: 4px solid #f59e0b; padding: 14px; border-radius: 6px; font-size: 14px; margin-top: 18px; }
+    .footer { border-top: 1px solid #e5e7eb; text-align: center; font-size: 12px; color: #6b7280; padding: 16px 24px 22px; }
+    .footer a { color: #2a5298; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 style="margin: 0;">N'DJIGI</h1>
+      <p style="margin: 8px 0 0;">Reinitialisation de mot de passe</p>
+    </div>
+    <div class="content">
+      <p>Bonjour <strong>${data.prenom}</strong>,</p>
+      <p>Vous avez demande la reinitialisation de votre mot de passe.</p>
+      <div class="cta">
+        <a href="${data.resetLink}">Reinitialiser mon mot de passe</a>
+      </div>
+      <div class="meta">
+        <p style="margin: 0 0 6px;"><strong>Expiration:</strong> Ce lien est valide pendant ${data.expiresInMinutes} minutes.</p>
+        <p style="margin: 0;"><strong>Securite:</strong> Cette demande provient de l'adresse IP ${data.ipAddress}.</p>
+      </div>
+      <div class="warning">
+        Si vous n'etes pas a l'origine de cette demande, ignorez cet email - votre mot de passe restera inchange.
+      </div>
+    </div>
+    <div class="footer">
+      <p style="margin: 0 0 8px;">Support WhatsApp: <a href="${supportLink}">${supportWhatsapp}</a></p>
+      <p style="margin: 0;">&copy; 2026 N'DJIGI. Tous droits reserves.</p>
+    </div>
+  </div>
+</body>
+</html>
+`;
+
+      return transporter.sendMail({
+        from: `N'DJIGI <${process.env.SMTP_USER}>`,
+        to: email,
+        subject: "N'DJIGI - Reinitialisation de votre mot de passe",
+        text: textContent.trim(),
+        html: htmlContent
+      });
+    } catch (error) {
+      throw new Error(`Failed to send password reset email: ${error.message}`);
+    }
+  },
+
+  /**
+   * Send password changed notification email
+   * @param {string} email
+   * @param {Object} data - { prenom, changedAt, ipAddress, userAgent }
+   */
+  async sendPasswordChangedNotification(email, data) {
+    try {
+      const supportWhatsapp = getSupportWhatsapp();
+      const supportLink = buildSupportWhatsappLink();
+      const formattedDate = formatChangedAt(data.changedAt);
+      const simplifiedUserAgent = simplifyUserAgent(data.userAgent);
+
+      const textContent = `
+Bonjour ${data.prenom},
+
+Votre mot de passe a ete modifie le ${formattedDate} depuis l'adresse IP ${data.ipAddress}.
+Appareil: ${simplifiedUserAgent}
+
+Si vous n'etes pas a l'origine de cette modification, votre compte est peut-etre compromis.
+Contactez immediatement notre support.
+
+Support WhatsApp: ${supportWhatsapp}
+${supportLink}
+`;
+
+      const htmlContent = `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mot de passe modifie - N'DJIGI</title>
+  <style>
+    body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f4f7fb; color: #1f2937; }
+    .container { max-width: 620px; margin: 24px auto; background: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 8px 24px rgba(30, 60, 114, 0.12); }
+    .header { background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: #ffffff; padding: 28px 24px; text-align: center; }
+    .content { padding: 28px 24px; line-height: 1.6; }
+    .meta { background: #eef3ff; border-left: 4px solid #2a5298; padding: 14px; border-radius: 6px; font-size: 14px; margin-top: 18px; }
+    .danger { background: #fff1f2; border: 1px solid #fecdd3; border-left: 4px solid #dc2626; color: #7f1d1d; padding: 14px; border-radius: 6px; font-size: 14px; margin-top: 18px; }
+    .cta { text-align: center; margin: 24px 0 6px; }
+    .cta a { display: inline-block; background: #2a5298; color: #ffffff; text-decoration: none; font-weight: 600; padding: 14px 24px; border-radius: 8px; }
+    .footer { border-top: 1px solid #e5e7eb; text-align: center; font-size: 12px; color: #6b7280; padding: 16px 24px 22px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 style="margin: 0;">N'DJIGI</h1>
+      <p style="margin: 8px 0 0;">Notification de securite</p>
+    </div>
+    <div class="content">
+      <p>Bonjour <strong>${data.prenom}</strong>,</p>
+      <div class="meta">
+        <p style="margin: 0 0 6px;">Votre mot de passe a ete modifie le <strong>${formattedDate}</strong> depuis l'adresse IP <strong>${data.ipAddress}</strong>.</p>
+        <p style="margin: 0;"><strong>Appareil:</strong> ${simplifiedUserAgent}</p>
+      </div>
+      <div class="danger">
+        Si vous n'etes pas a l'origine de cette modification, votre compte est peut-etre compromis. Contactez immediatement notre support.
+      </div>
+      <div class="cta">
+        <a href="${supportLink}">Contacter le support</a>
+      </div>
+    </div>
+    <div class="footer">
+      <p style="margin: 0;">&copy; 2026 N'DJIGI. Tous droits reserves.</p>
+    </div>
+  </div>
+</body>
+</html>
+`;
+
+      return transporter.sendMail({
+        from: `N'DJIGI <${process.env.SMTP_USER}>`,
+        to: email,
+        subject: "N'DJIGI - Votre mot de passe a ete modifie",
+        text: textContent.trim(),
+        html: htmlContent
+      });
+    } catch (error) {
+      throw new Error(`Failed to send password changed notification: ${error.message}`);
     }
   },
 
