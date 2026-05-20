@@ -3,7 +3,7 @@ require('dotenv').config();
 const { Pool } = require('pg');
 const { PrismaPg } = require('@prisma/adapter-pg');
 const { PrismaClient } = require('../generated/prisma/index.js');
-const bcrypt = require('bcryptjs');
+const userProvisioningService = require('../src/services/userProvisioningService');
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -64,64 +64,50 @@ const IDS = {
 
 async function main() {
     console.log('🌱 Début du seed...')
-    const hash = await bcrypt.hash('Password123!', 10)
 
-    // ─── 1. UTILISATEURS ────────────────────────────────────────
-    console.log('👤 Création des utilisateurs...')
+    // ─── 1. UTILISATEURS & RÔLES ─────────────────────────────────
+    // Using atomic userProvisioningService (system users for dev/test)
+    console.log('👤 Création des utilisateurs avec userProvisioningService...')
 
-    const utilisateurs = [
-        { id_utilisateur: IDS.admin, nom: 'Diallo', prenom: 'Amadou', email: 'admin@parkway.bf', numero_telephone: '+22670000001', mot_de_passe_hash: hash, adresse: 'Avenue Kwame Nkrumah, Ouagadougou', statut_compte: 'actif' },
-        { id_utilisateur: IDS.passager1, nom: 'Ouedraogo', prenom: 'Fatima', email: 'fatima.ouedraogo@gmail.com', numero_telephone: '+22670000002', mot_de_passe_hash: hash, adresse: 'Secteur 15, Ouagadougou', statut_compte: 'actif' },
-        { id_utilisateur: IDS.passager2, nom: 'Compaoré', prenom: 'Ibrahim', email: 'ibrahim.compaore@gmail.com', numero_telephone: '+22670000003', mot_de_passe_hash: hash, adresse: 'Gounghin, Ouagadougou', statut_compte: 'actif' },
-        { id_utilisateur: IDS.passager3, nom: 'Sawadogo', prenom: 'Marie', email: 'marie.sawadogo@gmail.com', numero_telephone: '+22670000004', mot_de_passe_hash: hash, statut_compte: 'actif' },
-        { id_utilisateur: IDS.chauffeur1, nom: 'Kaboré', prenom: 'Seydou', email: 'seydou.kabore@gmail.com', numero_telephone: '+22670000005', mot_de_passe_hash: hash, statut_compte: 'actif' },
-        { id_utilisateur: IDS.chauffeur2, nom: 'Traoré', prenom: 'Moussa', email: 'moussa.traore@gmail.com', numero_telephone: '+22670000006', mot_de_passe_hash: hash, statut_compte: 'actif' },
-        { id_utilisateur: IDS.chauffeur3, nom: 'Zongo', prenom: 'Lassina', email: 'lassina.zongo@gmail.com', numero_telephone: '+22670000007', mot_de_passe_hash: hash, statut_compte: 'actif' },
-        { id_utilisateur: IDS.chauffeur4, nom: 'Nikiema', prenom: 'Adama', email: 'adama.nikiema@gmail.com', numero_telephone: '+22670000008', mot_de_passe_hash: hash, statut_compte: 'actif' },
-        { id_utilisateur: IDS.chauffeur5, nom: 'Ilboudo', prenom: 'Rasmane', email: 'rasmane.ilboudo@gmail.com', numero_telephone: '+22670000009', mot_de_passe_hash: hash, statut_compte: 'actif' },
-        { id_utilisateur: IDS.chauffeur6, nom: 'Ouattara', prenom: 'Hamidou', email: 'hamidou.ouattara@gmail.com', numero_telephone: '+22670000010', mot_de_passe_hash: hash, statut_compte: 'actif' },
-        { id_utilisateur: IDS.chauffeur7, nom: 'Belem', prenom: 'Justin', email: 'justin.belem@gmail.com', numero_telephone: '+22670000011', mot_de_passe_hash: hash, statut_compte: 'suspendu' },
-        { id_utilisateur: IDS.proprietaire1, nom: 'Coulibaly', prenom: 'Salif', email: 'salif.coulibaly@gmail.com', numero_telephone: '+22670000012', mot_de_passe_hash: hash, statut_compte: 'actif' },
-        { id_utilisateur: IDS.proprietaire2, nom: 'Barry', prenom: 'Aïssata', email: 'aissata.barry@gmail.com', numero_telephone: '+22670000013', mot_de_passe_hash: hash, statut_compte: 'actif' },
-        { id_utilisateur: IDS.gestionnaire1, nom: 'Some', prenom: 'Eric', email: 'eric.some@parkway.bf', numero_telephone: '+22670000014', mot_de_passe_hash: hash, statut_compte: 'actif' },
-        { id_utilisateur: IDS.gestionnaire2, nom: 'Tapsoba', prenom: 'Alice', email: 'alice.tapsoba@parkway.bf', numero_telephone: '+22670000015', mot_de_passe_hash: hash, statut_compte: 'actif' },
+    const users = [
+        { nom: 'Diallo', prenom: 'Amadou', email: 'admin@parkway.bf', role: 'admin', numero_telephone: '+22670000001', adresse: 'Avenue Kwame Nkrumah, Ouagadougou' },
+        { nom: 'Ouedraogo', prenom: 'Fatima', email: 'fatima.ouedraogo@gmail.com', role: 'passager', numero_telephone: '+22670000002', adresse: 'Secteur 15, Ouagadougou' },
+        { nom: 'Compaoré', prenom: 'Ibrahim', email: 'ibrahim.compaore@gmail.com', role: 'passager', numero_telephone: '+22670000003', adresse: 'Gounghin, Ouagadougou' },
+        { nom: 'Sawadogo', prenom: 'Marie', email: 'marie.sawadogo@gmail.com', role: 'passager', numero_telephone: '+22670000004', adresse: null },
+        { nom: 'Kaboré', prenom: 'Seydou', email: 'seydou.kabore@gmail.com', role: 'chauffeur', numero_telephone: '+22670000005', adresse: null },
+        { nom: 'Traoré', prenom: 'Moussa', email: 'moussa.traore@gmail.com', role: 'chauffeur', numero_telephone: '+22670000006', adresse: null },
+        { nom: 'Zongo', prenom: 'Lassina', email: 'lassina.zongo@gmail.com', role: 'chauffeur', numero_telephone: '+22670000007', adresse: null },
+        { nom: 'Nikiema', prenom: 'Adama', email: 'adama.nikiema@gmail.com', role: 'chauffeur', numero_telephone: '+22670000008', adresse: null },
+        { nom: 'Ilboudo', prenom: 'Rasmane', email: 'rasmane.ilboudo@gmail.com', role: 'chauffeur', numero_telephone: '+22670000009', adresse: null },
+        { nom: 'Ouattara', prenom: 'Hamidou', email: 'hamidou.ouattara@gmail.com', role: 'chauffeur', numero_telephone: '+22670000010', adresse: null },
+        { nom: 'Belem', prenom: 'Justin', email: 'justin.belem@gmail.com', role: 'chauffeur', numero_telephone: '+22670000011', adresse: null },
+        { nom: 'Coulibaly', prenom: 'Salif', email: 'salif.coulibaly@gmail.com', role: 'proprietaire', numero_telephone: '+22670000012', adresse: null },
+        { nom: 'Barry', prenom: 'Aïssata', email: 'aissata.barry@gmail.com', role: 'proprietaire', numero_telephone: '+22670000013', adresse: null },
+        { nom: 'Some', prenom: 'Eric', email: 'eric.some@parkway.bf', role: 'gestionnaire', numero_telephone: '+22670000014', adresse: null, metadata: { id_parking: IDS.parking1 } },
+        { nom: 'Tapsoba', prenom: 'Alice', email: 'alice.tapsoba@parkway.bf', role: 'gestionnaire', numero_telephone: '+22670000015', adresse: null, metadata: { id_parking: IDS.parking2 } },
     ]
 
-    for (const u of utilisateurs) {
-        await prisma.utilisateur.upsert({
-            where: { id_utilisateur: u.id_utilisateur },
-            update: {},
-            create: u,
-        })
-    }
-
-    // ─── 2. RÔLES ────────────────────────────────────────────────
-    console.log('🎭 Attribution des rôles...')
-
-    const roles = [
-        { id_utilisateur: IDS.admin, role: 'admin' },
-        { id_utilisateur: IDS.passager1, role: 'passager' },
-        { id_utilisateur: IDS.passager2, role: 'passager' },
-        { id_utilisateur: IDS.passager3, role: 'passager' },
-        { id_utilisateur: IDS.chauffeur1, role: 'chauffeur' },
-        { id_utilisateur: IDS.chauffeur2, role: 'chauffeur' },
-        { id_utilisateur: IDS.chauffeur3, role: 'chauffeur' },
-        { id_utilisateur: IDS.chauffeur4, role: 'chauffeur' },
-        { id_utilisateur: IDS.chauffeur5, role: 'chauffeur' },
-        { id_utilisateur: IDS.chauffeur6, role: 'chauffeur' },
-        { id_utilisateur: IDS.chauffeur7, role: 'chauffeur' },
-        { id_utilisateur: IDS.proprietaire1, role: 'proprietaire' },
-        { id_utilisateur: IDS.proprietaire2, role: 'proprietaire' },
-        { id_utilisateur: IDS.gestionnaire1, role: 'gestionnaire' },
-        { id_utilisateur: IDS.gestionnaire2, role: 'gestionnaire' },
-    ]
-
-    for (const r of roles) {
-        await prisma.utilisateur_role.upsert({
-            where: { id_utilisateur_role: { id_utilisateur: r.id_utilisateur, role: r.role } },
-            update: {},
-            create: { ...r, actif: true },
-        })
+    for (const u of users) {
+        try {
+            await userProvisioningService.create({
+                email: u.email,
+                nom: u.nom,
+                prenom: u.prenom,
+                role: u.role,
+                numero_telephone: u.numero_telephone,
+                adresse: u.adresse,
+                metadata: u.metadata || {},
+                sendInvitationEmail: false,  // Skip email for seed users
+                systemUser: true  // System user: skip Keycloak (dev/test environment)
+            })
+            console.log(`  ✓ ${u.email} (${u.role})`)
+        } catch (error) {
+            if (error.code === 'EMAIL_EXISTS') {
+                console.log(`  ~ ${u.email} already exists, skipping`)
+            } else {
+                console.error(`  ✗ ${u.email}: ${error.message}`)
+            }
+        }
     }
 
     // ─── 3. PORTEFEUILLES ────────────────────────────────────────

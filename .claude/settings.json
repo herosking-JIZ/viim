@@ -24,7 +24,8 @@
       "Bash(Select-Object Name)",
       "Read(//c/Users/Kader/ SAWADOGO/Desktop/ndjigiv1/backend/__tests__/**)",
       "Bash(git add *)",
-      "Bash(node -e \"const c = require\\('./src/controllers/invitationController'\\); console.log\\('✅ InvitationController loads successfully'\\);\")"
+      "Bash(node -e \"const c = require\\('./src/controllers/invitationController'\\); console.log\\('✅ InvitationController loads successfully'\\);\")",
+      "Bash(node -e \"const seed = require\\('./prisma/seed.js'\\); console.log\\('✅ Seed module loads successfully'\\);\")"
     ]
   }
 }
