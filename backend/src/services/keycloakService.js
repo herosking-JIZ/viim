@@ -1,22 +1,105 @@
 /**
  * SERVICE/KEYCLOAKSERVICE.JS
- * Encapsule les appels au Keycloak token endpoint
+ * Encapsule les appels Keycloak:
+ *  - OpenID Connect token endpoints (login/refresh/logout)
+ *  - Admin API (users, roles, realms, reset password, etc.)
  *
- * Utilisé par keycloakAuthController pour:
- *  - login(email, password)
- *  - refresh(refresh_token)
- *  - logout(refresh_token)
+ * IMPORTANT (client admin dedie):
+ * Si le client KEYCLOAK_ADMIN_CLIENT_ID n'existe pas encore, creer un client
+ * "confidential" avec "Service Accounts Enabled" puis attribuer au service account:
+ * - realm-management -> view-users
+ * - realm-management -> manage-users
  */
 
 const axios = require('axios');
 const { URLSearchParams } = require('url');
+const KcAdminClient = require('@keycloak/keycloak-admin-client').default;
 const { KEYCLOAK_URL, KEYCLOAK_REALM, KEYCLOAK_CLIENT_ID } = require('../config/keycloak');
+
 const KEYCLOAK_CLIENT_SECRET = process.env.KEYCLOAK_CLIENT_SECRET || '';
+const KEYCLOAK_ADMIN_CLIENT_ID = process.env.KEYCLOAK_ADMIN_CLIENT_ID || KEYCLOAK_CLIENT_ID;
+const KEYCLOAK_ADMIN_CLIENT_SECRET = process.env.KEYCLOAK_ADMIN_CLIENT_SECRET || KEYCLOAK_CLIENT_SECRET;
 
 const keycloakClient = axios.create({
   baseURL: `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect`,
   timeout: 5000
 });
+
+let adminClient = null;
+let adminAuthPromise = null;
+let adminTokenExpiresAt = 0;
+
+function getAdminClient() {
+  if (adminClient) return adminClient;
+
+  adminClient = new KcAdminClient({
+    baseUrl: KEYCLOAK_URL,
+    realmName: KEYCLOAK_REALM
+  });
+
+  return adminClient;
+}
+
+async function ensureAdminAuthenticated() {
+  const client = getAdminClient();
+  const now = Date.now();
+
+  if (adminTokenExpiresAt > now + 60 * 1000) {
+    return client;
+  }
+
+  if (adminAuthPromise) {
+    await adminAuthPromise;
+    return client;
+  }
+
+  if (!KEYCLOAK_ADMIN_CLIENT_SECRET) {
+    throw new Error('Missing KEYCLOAK_ADMIN_CLIENT_SECRET for Keycloak Admin API.');
+  }
+
+  adminAuthPromise = (async () => {
+    await client.auth({
+      clientId: KEYCLOAK_ADMIN_CLIENT_ID,
+      clientSecret: KEYCLOAK_ADMIN_CLIENT_SECRET,
+      grantType: 'client_credentials'
+    });
+
+    const exp = client.accessTokenParsed?.exp;
+    adminTokenExpiresAt = exp ? exp * 1000 : Date.now() + 60 * 1000;
+    return client;
+  })().finally(() => {
+    adminAuthPromise = null;
+  });
+
+  await adminAuthPromise;
+  return client;
+}
+
+function createAdminAPIProxy(path = []) {
+  const callable = () => {};
+
+  return new Proxy(callable, {
+    get(_target, prop) {
+      if (prop === 'then') return undefined;
+      return createAdminAPIProxy([...path, prop]);
+    },
+    async apply(_target, _thisArg, args) {
+      const client = await ensureAdminAuthenticated();
+      const methodName = path[path.length - 1];
+      const scopePath = path.slice(0, -1);
+      const scope = scopePath.reduce((acc, key) => acc?.[key], client);
+      const method = scope?.[methodName];
+
+      if (typeof method !== 'function') {
+        throw new Error(`Invalid Keycloak Admin API path: ${path.join('.')}`);
+      }
+
+      return method.apply(scope, args);
+    }
+  });
+}
+
+const adminAPI = createAdminAPIProxy();
 
 /**
  * Login via Keycloak Direct Access Grant (Resource Owner Password)
@@ -27,30 +110,24 @@ const keycloakClient = axios.create({
 async function login(email, password) {
   try {
     const auth = Buffer.from(`${KEYCLOAK_CLIENT_ID}:${KEYCLOAK_CLIENT_SECRET}`).toString('base64');
-
     const params = new URLSearchParams();
+
     params.append('grant_type', 'password');
     params.append('username', email);
     params.append('password', password);
     params.append('scope', 'openid profile email');
 
-    const response = await keycloakClient.post('/token',
-      params,
-      {
-        headers: {
-          'Authorization': `Basic ${auth}`,
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
+    const response = await keycloakClient.post('/token', params, {
+      headers: {
+        Authorization: `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
       }
-    );
+    });
 
     return response.data;
   } catch (error) {
     const errorData = error.response?.data || {};
     const message = errorData.error_description || error.message;
-
-    console.error(`❌ Keycloak login failed: ${message}`);
-
     throw new Error(`Login failed: ${message}`);
   }
 }
@@ -63,29 +140,23 @@ async function login(email, password) {
 async function refresh(refresh_token) {
   try {
     const auth = Buffer.from(`${KEYCLOAK_CLIENT_ID}:${KEYCLOAK_CLIENT_SECRET}`).toString('base64');
-
     const params = new URLSearchParams();
+
     params.append('grant_type', 'refresh_token');
     params.append('refresh_token', refresh_token);
     params.append('scope', 'openid profile email');
 
-    const response = await keycloakClient.post('/token',
-      params,
-      {
-        headers: {
-          'Authorization': `Basic ${auth}`,
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
+    const response = await keycloakClient.post('/token', params, {
+      headers: {
+        Authorization: `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
       }
-    );
+    });
 
     return response.data;
   } catch (error) {
     const errorData = error.response?.data || {};
     const message = errorData.error_description || error.message;
-
-    console.error(`❌ Keycloak refresh failed: ${message}`);
-
     throw new Error(`Refresh failed: ${message}`);
   }
 }
@@ -96,22 +167,45 @@ async function refresh(refresh_token) {
  */
 async function logout(refresh_token) {
   try {
-    await keycloakClient.post('/logout', {
-      client_id: KEYCLOAK_CLIENT_ID,
-      client_secret: KEYCLOAK_CLIENT_SECRET,
-      refresh_token: refresh_token
+    const params = new URLSearchParams();
+
+    params.append('client_id', KEYCLOAK_CLIENT_ID);
+    params.append('client_secret', KEYCLOAK_CLIENT_SECRET);
+    params.append('refresh_token', refresh_token);
+
+    await keycloakClient.post('/logout', params, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      }
     });
 
     return { success: true };
   } catch (error) {
-    // Logout peut échouer silencieusement en dev (token déjà expiré, etc.)
-    console.warn(`⚠️  Keycloak logout warning: ${error.message}`);
+    console.warn(JSON.stringify({
+      event: 'keycloak_logout_warning',
+      message: error.message
+    }));
     return { success: true };
   }
+}
+
+async function findUserByUsername(username) {
+  const users = await adminAPI.users.find({
+    realm: KEYCLOAK_REALM,
+    username,
+    exact: true
+  });
+
+  return users?.[0] || null;
 }
 
 module.exports = {
   login,
   refresh,
-  logout
+  logout,
+  adminAPI,
+  ensureAdminAuthenticated,
+  findUserByUsername,
+  KEYCLOAK_ADMIN_CLIENT_ID
 };
+
