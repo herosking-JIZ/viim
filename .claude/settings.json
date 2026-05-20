@@ -18,7 +18,8 @@
       "Bash(docker-compose build *)",
       "Bash(docker-compose up *)",
       "Bash(docker-compose restart *)",
-      "PowerShell(ls 'C:\\\\Users\\\\Kader SAWADOGO\\\\Desktop\\\\ndjigiv1\\\\backend\\\\prisma\\\\migrations\\\\')"
+      "PowerShell(ls 'C:\\\\Users\\\\Kader SAWADOGO\\\\Desktop\\\\ndjigiv1\\\\backend\\\\prisma\\\\migrations\\\\')",
+      "Bash(npm uninstall *)"
     ]
   }
 }
