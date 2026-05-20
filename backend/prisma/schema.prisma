@@ -344,6 +344,7 @@ model utilisateur {
   incident_securite                    incident_securite[]
   journal_parking                      journal_parking[]
   notification                         notification[]
+  password_reset_tokens                password_reset_token[]
   paiement                             paiement[]
   passager                             passager?
   portefeuille                         portefeuille?
@@ -351,6 +352,22 @@ model utilisateur {
   utilisateur_role                     utilisateur_role[]
   utilisation_promo                    utilisation_promo[]
   moyens_paiement                      moyens_paiement[]
+}
+
+model password_reset_token {
+  id             String      @id @default(uuid()) @db.Uuid
+  token_hash     String      @unique
+  id_utilisateur String      @db.Uuid
+  keycloak_id    String
+  expires_at     DateTime
+  created_at     DateTime    @default(now())
+  created_ip     String?
+  used_at        DateTime?
+  used_ip        String?
+  utilisateur    utilisateur @relation(fields: [id_utilisateur], references: [id_utilisateur], onDelete: Cascade)
+
+  @@index([id_utilisateur, used_at])
+  @@index([expires_at])
 }
 
 model utilisateur_role {
