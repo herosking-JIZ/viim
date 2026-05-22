@@ -25,6 +25,7 @@ const bcrypt = require('bcryptjs');
 const { encrypt, decrypt, generateTechPassword } = require('../utils/crypto');
 const EmailService = require('../services/emailService');
 const { validatePasswordStrength } = require('../utils/passwordValidator');
+const logger = require('../utils/logger');
 
 const PASSWORD_RESET_TOKEN_TTL_MINUTES = parseInt(
   process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES || '15',
@@ -1240,10 +1241,10 @@ const KeycloakAuthController = {
       try {
         await prisma.auth_log.create({
           data: {
-            phone: normalizedPhone,
-            action: 'otp_request',
-            status: 'success',
-            ip_address: req.ip
+            event_type: 'otp_request',
+            channel: 'sms',
+            ip_address: req.ip,
+            metadata: { phone: normalizedPhone, status: 'success' }
           }
         });
       } catch (logError) {
@@ -1361,13 +1362,29 @@ const KeycloakAuthController = {
             enabled: true
           });
 
-          // Assign passager role
-          await keycloakService.adminAPI.users.addClientRoleMappings({
-            realm: process.env.KEYCLOAK_REALM,
-            id: keycloakUser.id,
-            clientUniqueId: process.env.KEYCLOAK_CLIENT_ID,
-            roles: [{ name: 'ndjigi-passager' }]
-          });
+          // Assign passager role (realm role, not client role)
+          try {
+            const passagerRole = await keycloakService.adminAPI.roles.findOneByName({
+              realm: process.env.KEYCLOAK_REALM,
+              name: 'ndjigi-passager'
+            });
+
+            if (passagerRole) {
+              await keycloakService.adminAPI.users.addRealmRoleMappings({
+                realm: process.env.KEYCLOAK_REALM,
+                id: keycloakUser.id,
+                roles: [passagerRole]
+              });
+            }
+          } catch (roleErr) {
+            logger.warn({
+              event: 'otp_role_assignment_failed',
+              email: normalizedPhone,
+              keycloak_id: keycloakUser.id,
+              error: roleErr.message
+            });
+            // Non-blocking: user created but without role
+          }
 
           // Create local user
           const encryptedPassword = encrypt(techPassword);
@@ -1925,6 +1942,7 @@ const KeycloakAuthController = {
 
       // Create user in Keycloak
       const newUser = {
+        username: email,
         email: email,
         emailVerified: false,
         firstName: prenom,

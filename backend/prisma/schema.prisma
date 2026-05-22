@@ -22,6 +22,20 @@ enum TypeMoyenPaiement {
   PORTEFEUILLE
 }
 
+enum ProvisioningIncidentType {
+  orphan_keycloak
+  orphan_postgres
+  rollback_failed
+  email_failed
+  sync_failed
+}
+
+enum ProvisioningIncidentStatus {
+  pending
+  resolved
+  manual_intervention_required
+}
+
 model affectation_vehicule {
   id_affectation String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   id_vehicule    String    @unique(map: "idx_vehicule_chauffeur_actif", where: raw("(est_active = true)")) @db.Uuid
@@ -305,9 +319,9 @@ model utilisateur {
   keycloak_id                          String?               @unique @db.Uuid
   numero_telephone                     String                @unique @db.VarChar(20)
   phone                                String?               @unique @db.VarChar(20)
-  email                                String                @unique @db.VarChar(255)
-  nom                                  String                @db.VarChar(100)
-  prenom                               String                @db.VarChar(100)
+  email                                String?               @unique @db.VarChar(255)
+  nom                                  String?               @db.VarChar(100)
+  prenom                               String?               @db.VarChar(100)
   mot_de_passe_hash                    String?
   /// Flag indicating user must change their password on first login
   mot_de_passe_temporaire              Boolean               @default(false)
@@ -352,6 +366,7 @@ model utilisateur {
   utilisateur_role                     utilisateur_role[]
   utilisation_promo                    utilisation_promo[]
   moyens_paiement                      moyens_paiement[]
+  provisioning_incidents               provisioning_incidents[]
 }
 
 model password_reset_token {
@@ -553,4 +568,25 @@ model moyens_paiement {
   paiements   paiement[] // ✅ liste virtuelle (pas de colonne SQL)
 
   @@index([id_utilisateur], map: "idx_moyens_paiement_utilisateur")
+}
+
+model provisioning_incidents {
+  id_incident                   String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type                          ProvisioningIncidentType
+  status                        ProvisioningIncidentStatus   @default(pending)
+  user_email                    String?                      @db.VarChar(255)
+  keycloak_id                   String?                      @db.Uuid
+  id_utilisateur                String?                      @db.Uuid
+  error_message                 String?
+  error_details                 Json?
+  created_at                    DateTime                     @default(now()) @db.Timestamp(6)
+  resolved_at                   DateTime?                    @db.Timestamp(6)
+  resolved_by                   String?                      @db.VarChar(255) // Admin who resolved it
+  resolution_notes              String?
+
+  utilisateur utilisateur? @relation(fields: [id_utilisateur], references: [id_utilisateur], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([type], map: "idx_provisioning_incidents_type")
+  @@index([status], map: "idx_provisioning_incidents_status")
+  @@index([created_at], map: "idx_provisioning_incidents_created_at")
 }

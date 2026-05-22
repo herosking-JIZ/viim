@@ -234,11 +234,11 @@ describe('Authentication Refactoring — E2E Scenarios', () => {
 
       const systemUser = {
         systemUser: true,
-        keycloak_id: 'SYSTEM_NO_AUTH', // Sentinel value
+        keycloak_id: crypto.randomUUID(), // Random UUID generated at creation
         cannot_login: 'Designed for APIs, not human users'
       };
 
-      expect(systemUser.keycloak_id).toBe('SYSTEM_NO_AUTH');
+      expect(systemUser.keycloak_id).toBeDefined();
     });
   });
 

@@ -4,7 +4,8 @@
  */
 
 const crypto = require('crypto');
-const { redis } = require('../config/redis');
+const { getRedisClient } = require('../config/redis');
+const redis = getRedisClient();
 
 const OTP_LENGTH = 6;
 const OTP_EXPIRY = 300; // 5 minutes
