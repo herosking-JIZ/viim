@@ -319,9 +319,9 @@ model utilisateur {
   keycloak_id                          String?               @unique @db.Uuid
   numero_telephone                     String                @unique @db.VarChar(20)
   phone                                String?               @unique @db.VarChar(20)
-  email                                String?               @unique @db.VarChar(255)
-  nom                                  String?               @db.VarChar(100)
-  prenom                               String?               @db.VarChar(100)
+  email                                String                @unique @db.VarChar(255)
+  nom                                  String                @db.VarChar(100)
+  prenom                               String                @db.VarChar(100)
   mot_de_passe_hash                    String?
   /// Flag indicating user must change their password on first login
   mot_de_passe_temporaire              Boolean               @default(false)
@@ -346,6 +346,12 @@ model utilisateur {
   auth_method_otp                      Boolean               @default(false)
   /// Admin who created this user (for audit)
   created_by                           String?               @db.Uuid
+  /// Invitation system (for account activation)
+  invitation_token                     String?               @unique @db.Uuid
+  invitation_token_expire              DateTime?             @db.Timestamp(6)
+  invitation_sent_at                   DateTime?             @db.Timestamp(6)
+  invitation_used_at                   DateTime?             @db.Timestamp(6)
+  invitation_resend_count              Int                   @default(0)
   ticket                               ticket[]
   ticket_assigne                       ticket[]              @relation("ticket_agent")
   remboursement                        remboursement[]
