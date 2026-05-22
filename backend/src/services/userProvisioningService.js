@@ -65,7 +65,8 @@ function normalizeEmail(email) {
  * @param {string} [params.numero_telephone] - Phone number (optional)
  * @param {string} [params.adresse] - Address (optional)
  * @param {object} [params.metadata] - Role-specific metadata: { id_parking, type_service, ... } (optional)
- * @param {boolean} [params.sendInvitationEmail=true] - Send welcome email (optional)
+ * @param {string} [params.tempPassword] - Explicit temp password instead of generating one (optional, for seed)
+ * @param {boolean} [params.sendInvitationEmail=false] - Send welcome email (optional, defaults to false = fail-closed)
  * @param {object} [params.createdBy] - { id_utilisateur, role } for audit logging (optional)
  * @param {boolean} [params.systemUser=false] - System user (skip KC creation, set keycloak_id='SYSTEM_NO_AUTH') (optional)
  * @param {object} [params.prismaTx] - Prisma transaction handle (optional, for nested operations)
@@ -95,7 +96,8 @@ async function create(params) {
     numero_telephone,
     adresse,
     metadata = {},
-    sendInvitationEmail = true,
+    tempPassword = null,
+    sendInvitationEmail = false,
     createdBy = {},
     systemUser = false,
     prismaTx = null,
@@ -106,11 +108,11 @@ async function create(params) {
 
   // If no transaction handle provided, wrap entire operation in transaction
   if (prismaTx) {
-    return createUserInternal({ email, prenom, nom, role, numero_telephone, adresse, metadata, sendInvitationEmail, createdBy, systemUser, tx: prismaTx });
+    return createUserInternal({ email, prenom, nom, role, numero_telephone, adresse, metadata, tempPassword, sendInvitationEmail, createdBy, systemUser, tx: prismaTx });
   }
 
   return prisma.$transaction(async (tx) => {
-    return createUserInternal({ email, prenom, nom, role, numero_telephone, adresse, metadata, sendInvitationEmail, createdBy, systemUser, tx });
+    return createUserInternal({ email, prenom, nom, role, numero_telephone, adresse, metadata, tempPassword, sendInvitationEmail, createdBy, systemUser, tx });
   });
 }
 
@@ -123,7 +125,8 @@ async function createUserInternal(params) {
     numero_telephone,
     adresse,
     metadata = {},
-    sendInvitationEmail = true,
+    tempPassword = null,
+    sendInvitationEmail = false,
     createdBy = {},
     systemUser = false,
     tx
@@ -174,7 +177,8 @@ async function createUserInternal(params) {
   }
 
   let keycloak_id = null;
-  let tempPassword = null;
+  // Use provided tempPassword (for seed/testing) or generate a new one
+  let password = tempPassword || generateTempPassword();
 
   // ─── Step 3: Create in Keycloak (unless systemUser) ─────────────
   if (!systemUser) {
@@ -184,8 +188,6 @@ async function createUserInternal(params) {
         email,
         role,
       });
-
-      tempPassword = generateTempPassword();
       const kcRoleName = getKeycloakRole(role);
 
       const keycloakUser = await keycloakService.adminAPI.users.create({
@@ -200,7 +202,7 @@ async function createUserInternal(params) {
         credentials: [
           {
             type: 'password',
-            value: tempPassword,
+            value: password,
             temporary: true,
           },
         ],
@@ -266,6 +268,20 @@ async function createUserInternal(params) {
     });
   }
 
+  // ─── Step 3c: Generate invitation token (for account activation) ───
+  let invitationToken = null;
+  let invitationTokenExpire = null;
+  if (!systemUser) {
+    invitationToken = crypto.randomUUID();
+    invitationTokenExpire = new Date(Date.now() + 24 * 60 * 60 * 1000); // +24h
+    logger.info({
+      event: 'invitation_token_generated',
+      email,
+      invitation_token: invitationToken,
+      expires_at: invitationTokenExpire,
+    });
+  }
+
   // ─── Step 4: Create in PostgreSQL (atomic transaction) ──────────
   let pgUser = null;
   try {
@@ -288,6 +304,10 @@ async function createUserInternal(params) {
         auth_provider: systemUser ? 'system' : 'keycloak',
         statut_compte: 'actif',
         created_by: createdBy.id_utilisateur || null,
+        invitation_token: invitationToken || null,
+        invitation_token_expire: invitationTokenExpire || null,
+        invitation_sent_at: invitationToken ? new Date() : null,
+        invitation_resend_count: 0,
         utilisateur_role: {
           create: {
             role,
@@ -397,18 +417,20 @@ async function createUserInternal(params) {
   }
 
   // ─── Step 6: Send invitation email (non-blocking) ────────────────
-  if (sendInvitationEmail && !systemUser && tempPassword) {
+  if (sendInvitationEmail && !systemUser && password) {
     try {
       await EmailService.sendUserInvitation(email, {
         nom,
         prenom,
         role,
-        tempPassword,
+        tempPassword: password,
+        token: invitationToken,
         appUrl: process.env.APP_URL || 'http://localhost:3000',
       });
       logger.info({
         event: 'invitation_email_sent',
         email,
+        invitation_token: invitationToken,
       });
     } catch (emailErr) {
       logger.warn({
@@ -436,7 +458,7 @@ async function createUserInternal(params) {
     prenom,
     nom,
     role,
-    ...(tempPassword && !systemUser && { tempPassword }),
+    ...(password && !systemUser && { tempPassword: password }),
   };
 }
 
