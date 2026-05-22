@@ -1,52 +1,197 @@
-// prisma/seed.js
+/**
+ * DEV-ONLY SEED
+ *
+ * This seed creates test users and data for local development.
+ *
+ * In production:
+ *   - Admins are created manually in Keycloak Admin Console by IT
+ *   - Synced to PostgreSQL via webhook (PHASE 4) and reconciliation job (PHASE 5)
+ *   - Gestionnaires are created by admins via the web interface
+ *   - Other users (passager/chauffeur/proprietaire) self-register via OTP
+ *
+ * NEVER run this seed in staging or production environments.
+ *
+ * Required env vars (from .env):
+ *   SEED_ADMIN_EMAIL
+ *   SEED_ADMIN_PASSWORD
+ *   SEED_GESTIONNAIRE_EMAIL
+ *   SEED_GESTIONNAIRE_PASSWORD
+ */
+
 require('dotenv').config();
-const { Pool } = require('pg');
-const { PrismaPg } = require('@prisma/adapter-pg');
-const { PrismaClient } = require('../generated/prisma/index.js');
+const { prisma } = require('../src/config/db');
 const userProvisioningService = require('../src/services/userProvisioningService');
+const logger = require('../src/utils/logger');
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+async function main() {
+  logger.info({ event: 'seed_start', message: 'Starting DEV-ONLY seed' });
 
-const IDS = {
-    // Utilisateurs
-    admin: 'a0000000-0000-0000-0000-000000000001',
-    passager1: 'b0000000-0000-0000-0000-000000000001',
-    passager2: 'b0000000-0000-0000-0000-000000000002',
-    passager3: 'b0000000-0000-0000-0000-000000000003',
-    chauffeur1: 'c0000000-0000-0000-0000-000000000001',
-    chauffeur2: 'c0000000-0000-0000-0000-000000000002',
-    chauffeur3: 'c0000000-0000-0000-0000-000000000003',
-    chauffeur4: 'c0000000-0000-0000-0000-000000000004',
-    chauffeur5: 'c0000000-0000-0000-0000-000000000005',
-    chauffeur6: 'c0000000-0000-0000-0000-000000000006',
-    chauffeur7: 'c0000000-0000-0000-0000-000000000007',
-    proprietaire1: 'd0000000-0000-0000-0000-000000000001',
-    proprietaire2: 'd0000000-0000-0000-0000-000000000002',
-    gestionnaire1: 'e0000000-0000-0000-0000-000000000001',
-    gestionnaire2: 'e0000000-0000-0000-0000-000000000002',
+  try {
+    // ──────────────────────────────────────────────────────────
+    // Create parking
+    // ──────────────────────────────────────────────────────────
+    logger.info({ event: 'seed_creating_parking' });
 
-    // Parkings
-    parking1: 'f0000000-0000-0000-0000-000000000001',
-    parking2: 'f0000000-0000-0000-0000-000000000002',
+    const parking = await prisma.parking.upsert({
+      where: { nom: 'Parking Central Test' },
+      update: {},
+      create: {
+        nom: 'Parking Central Test',
+        ville: 'Ouagadougou',
+        adresse: 'Rue de la Révolution, Ouagadougou',
+        nombre_places_parking: 50,
+        nombre_places_moto: 20,
+        statut: 'actif',
+        date_creation: new Date(),
+      },
+    });
 
-    // Catégories de véhicule
-    cat_eco: 'ca000000-0000-0000-0000-000000000001',
-    cat_confort: 'ca000000-0000-0000-0000-000000000002',
-    cat_suv: 'ca000000-0000-0000-0000-000000000003',
-    cat_luxe: 'ca000000-0000-0000-0000-000000000004',
+    logger.info({
+      event: 'seed_parking_created',
+      id_parking: parking.id_parking,
+      nom: parking.nom,
+    });
 
-    // Véhicules
-    vehicule1: '10000000-0000-0000-0000-000000000001',
-    vehicule2: '10000000-0000-0000-0000-000000000002',
-    vehicule3: '10000000-0000-0000-0000-000000000003',
-    vehicule4: '10000000-0000-0000-0000-000000000004',
+    // ──────────────────────────────────────────────────────────
+    // Create admin (DEV-ONLY exception)
+    // ──────────────────────────────────────────────────────────
+    const adminEmail = process.env.SEED_ADMIN_EMAIL || 'admin@parkway.bf';
+    const adminPassword = process.env.SEED_ADMIN_PASSWORD;
 
-    // Affectations
-    affectation1: '20000000-0000-0000-0000-000000000001',
-    affectation2: '20000000-0000-0000-0000-000000000002',
-    affectation3: '20000000-0000-0000-0000-000000000003',
+    if (!adminPassword) {
+      throw new Error(
+        'SEED_ADMIN_PASSWORD is required in .env for DEV-ONLY seed. Never use in production!'
+      );
+    }
+
+    logger.info({
+      event: 'seed_creating_admin',
+      email: adminEmail,
+    });
+
+    try {
+      const admin = await userProvisioningService.create({
+        email: adminEmail,
+        nom: 'Admin',
+        prenom: 'NDJIGI',
+        role: 'admin',
+        numero_telephone: '+22670000001',
+        tempPassword: adminPassword,
+        sendInvitationEmail: false,
+        systemUser: false,
+      });
+
+      logger.info({
+        event: 'seed_admin_created',
+        id_utilisateur: admin.id_utilisateur,
+        keycloak_id: admin.keycloak_id,
+        email: admin.email,
+      });
+    } catch (adminErr) {
+      if (adminErr.code === 'EMAIL_EXISTS') {
+        logger.info({
+          event: 'seed_admin_already_exists',
+          email: adminEmail,
+        });
+      } else {
+        throw adminErr;
+      }
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // Create gestionnaire (for testing gestionnaire flows)
+    // ──────────────────────────────────────────────────────────
+    const gestionnaireEmail = process.env.SEED_GESTIONNAIRE_EMAIL || 'gestionnaire.test@parkway.bf';
+    const gestionnairePassword = process.env.SEED_GESTIONNAIRE_PASSWORD;
+
+    if (!gestionnairePassword) {
+      throw new Error(
+        'SEED_GESTIONNAIRE_PASSWORD is required in .env for DEV-ONLY seed. Never use in production!'
+      );
+    }
+
+    logger.info({
+      event: 'seed_creating_gestionnaire',
+      email: gestionnaireEmail,
+      parking: parking.id_parking,
+    });
+
+    try {
+      const gestionnaire = await userProvisioningService.create({
+        email: gestionnaireEmail,
+        nom: 'Test',
+        prenom: 'Gestionnaire',
+        role: 'gestionnaire',
+        numero_telephone: '+22670000002',
+        adresse: 'Rue de la Paix, Ouagadougou',
+        metadata: { id_parking: parking.id_parking },
+        tempPassword: gestionnairePassword,
+        sendInvitationEmail: false,
+        createdBy: {
+          id_utilisateur: 'admin-seed-creator',
+          role: 'admin',
+        },
+      });
+
+      logger.info({
+        event: 'seed_gestionnaire_created',
+        id_utilisateur: gestionnaire.id_utilisateur,
+        keycloak_id: gestionnaire.keycloak_id,
+        email: gestionnaire.email,
+        parking: parking.id_parking,
+      });
+    } catch (gestionnaireErr) {
+      if (gestionnaireErr.code === 'EMAIL_EXISTS') {
+        logger.info({
+          event: 'seed_gestionnaire_already_exists',
+          email: gestionnaireEmail,
+        });
+      } else {
+        throw gestionnaireErr;
+      }
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // Summary
+    // ──────────────────────────────────────────────────────────
+    logger.info({
+      event: 'seed_complete',
+      message: 'DEV-ONLY seed completed successfully',
+      parking_created: parking.id_parking,
+      admin_email: adminEmail,
+      gestionnaire_email: gestionnaireEmail,
+    });
+
+    console.log('\n' + '='.repeat(70));
+    console.log('✅ DEV-ONLY SEED COMPLETE');
+    console.log('='.repeat(70));
+    console.log('\n📋 Test Credentials:\n');
+    console.log(`   Admin:`);
+    console.log(`     Email: ${adminEmail}`);
+    console.log(`     Password: ${adminPassword}\n`);
+    console.log(`   Gestionnaire:`);
+    console.log(`     Email: ${gestionnaireEmail}`);
+    console.log(`     Password: ${gestionnairePassword}\n`);
+    console.log(`   Parking: ${parking.nom} (${parking.id_parking})\n`);
+    console.log('⚠️  These credentials are for DEV ONLY');
+    console.log('   Never use in staging or production!\n');
+  } catch (error) {
+    logger.error({
+      event: 'seed_failed',
+      error: error.message,
+      code: error.code,
+    });
+    console.error('\n❌ Seed failed:', error.message);
+    if (error.code) {
+      console.error(`   Code: ${error.code}`);
+    }
+    process.exit(1);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+main();
 
     // Zones tarifaires
     zone_centre: '30000000-0000-0000-0000-000000000001',
