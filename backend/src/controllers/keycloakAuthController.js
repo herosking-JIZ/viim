@@ -1363,27 +1363,23 @@ const KeycloakAuthController = {
           });
 
           // Assign passager role (realm role, not client role)
-          try {
-            const passagerRole = await keycloakService.adminAPI.roles.findOneByName({
-              realm: process.env.KEYCLOAK_REALM,
-              name: 'ndjigi-passager'
-            });
+          const passagerRole = await keycloakService.adminAPI.roles.findOneByName({
+            realm: process.env.KEYCLOAK_REALM,
+            name: 'ndjigi-passager'
+          });
 
-            if (passagerRole) {
-              await keycloakService.adminAPI.users.addRealmRoleMappings({
-                realm: process.env.KEYCLOAK_REALM,
-                id: keycloakUser.id,
-                roles: [passagerRole]
-              });
-            }
-          } catch (roleErr) {
-            logger.warn({
-              event: 'otp_role_assignment_failed',
+          if (passagerRole) {
+            await keycloakService.adminAPI.users.addRealmRoleMappings({
+              realm: process.env.KEYCLOAK_REALM,
+              id: keycloakUser.id,
+              roles: [passagerRole]
+            });
+            logger.info({
+              event: 'keycloak_role_assigned',
               email: normalizedPhone,
               keycloak_id: keycloakUser.id,
-              error: roleErr.message
+              role: 'ndjigi-passager'
             });
-            // Non-blocking: user created but without role
           }
 
           // Create local user
