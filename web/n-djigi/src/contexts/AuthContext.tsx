@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import type { AuthUser, UserRole } from '@/types'
 import axios from 'axios'
 
@@ -11,9 +11,10 @@ const STORAGE_KEY_AUTH_METHOD = 'ndjigi_auth_method'
 interface AuthContextValue {
   user: AuthUser | null
   loading: boolean
+  parkingLoading: boolean
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
-  verifySms: (loginToken: string, code: string) => Promise<void>
+  verifySms: (loginToken: string, code: string) => Promise<AuthUser>
   resendSms: (loginToken: string) => Promise<void>
   can: (permission: string) => boolean
   hasRole: (role: UserRole) => boolean
@@ -43,6 +44,7 @@ function buildAuthUser(user: any): AuthUser {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
+  const [parkingLoading, setParkingLoading] = useState(false)
 
   // ─── Restaurer la session au démarrage ─────────────────────
   useEffect(() => {
@@ -58,6 +60,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
     setLoading(false)
+  }, [])
+
+  // ─── Charger le parking du gestionnaire ───────────────────── (DÉFINI PREMIER)
+  const loadGestionnaireParking = useCallback(async (accessToken?: string) => {
+    console.log('🔵 [AUTH] loadGestionnaireParking APPELÉE avec token:', accessToken?.substring(0, 20) + '...')
+    setParkingLoading(true)
+    try {
+      const token = accessToken || localStorage.getItem(STORAGE_KEY_ACCESS)
+      console.log('🔵 [AUTH] Token utilisé:', token?.substring(0, 20) + '...')
+      if (!token) {
+        console.warn('⚠️ [AUTH] Pas de token disponible')
+        return
+      }
+
+      console.log('🔵 [AUTH] Appel API /gestionnaire/me/parking...')
+      const res = await axios.get('/api/v1/gestionnaire/me/parking', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+
+      console.log('🔵 [AUTH] Réponse API:', res.data)
+
+      if (res.data.success && res.data.data) {
+        console.log('🔵 [AUTH] Parking trouvé:', res.data.data.id_parking, res.data.data.nom)
+        // Mettre à jour l'user avec les infos parking
+        console.log('🔵 [AUTH] AVANT setUser - appel setUser avec parking_id:', res.data.data.id_parking)
+        setUser(prevUser => {
+          console.log('🔵 [AUTH] prevUser avant update:', prevUser)
+          if (!prevUser) {
+            console.warn('⚠️ [AUTH] prevUser est null!')
+            return null
+          }
+          const updatedUser = {
+            ...prevUser,
+            parking_id: res.data.data.id_parking,
+            parking_nom: res.data.data.nom,
+            parking_adresse: res.data.data.adresse
+          }
+          console.log('🔵 [AUTH] updatedUser avec parking:', updatedUser)
+          console.log('🔵 [AUTH] parking_id dans updatedUser:', updatedUser.parking_id)
+          // Sauvegarder le user complet dans localStorage
+          localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updatedUser))
+          return updatedUser
+        })
+        console.log('🔵 [AUTH] APRÈS setUser - mise à jour en queue')
+      } else {
+        console.warn('⚠️ [AUTH] Réponse API invalide:', res.data)
+      }
+    } catch (error: any) {
+      console.error('❌ [AUTH] Erreur loadGestionnaireParking:', error?.response?.data?.message || error?.message)
+      // Ne pas bloquer le login si cette API échoue
+    } finally {
+      console.log('🔵 [AUTH] setParkingLoading(false)')
+      setParkingLoading(false)
+    }
   }, [])
 
   // ─── Login via backend Keycloak endpoints ─────────────────
@@ -94,6 +150,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(STORAGE_KEY_AUTH_METHOD, 'keycloak')
 
       setUser(authUser)
+
+      // ✅ Charger les infos parking si gestionnaire
+      if (authUser.roles.includes('gestionnaire')) {
+        setTimeout(() => loadGestionnaireParking(access_token), 100)
+      }
     } catch (error: any) {
       // Relancer l'erreur pour que le component Login la capte
       if (error.response) {
@@ -126,7 +187,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   // ─── Verify SMS ───────────────────────────────────────────
-  const verifySms = useCallback(async (loginToken: string, code: string) => {
+  const verifySms = useCallback(async (loginToken: string, code: string): Promise<AuthUser> => {
     const res = await axios.post('/api/v1/auth/verify-sms', {
       login_token: loginToken,
       sms_code: code
@@ -141,43 +202,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(STORAGE_KEY_AUTH_METHOD, 'keycloak')
 
     setUser(authUser)
+    console.log('🟡 [VERIFY-SMS] User défini:', authUser.nom, authUser.prenom, 'Rôles:', authUser.roles)
 
     // ✅ Charger les infos parking si gestionnaire
     if (authUser.roles.includes('gestionnaire')) {
-      setTimeout(() => loadGestionnaireParking(access_token), 100)
+      console.log('🟡 [VERIFY-SMS] Gestionnaire détecté, planification du chargement parking...')
+      setTimeout(() => {
+        console.log('🟡 [VERIFY-SMS] Appel loadGestionnaireParking depuis setTimeout')
+        loadGestionnaireParking(access_token)
+      }, 100)
+    } else {
+      console.log('🟡 [VERIFY-SMS] Pas gestionnaire, pas de chargement parking')
     }
-  }, [])
 
-  // ─── Charger le parking du gestionnaire ─────────────────────
-  const loadGestionnaireParking = useCallback(async (accessToken?: string) => {
-    try {
-      const token = accessToken || localStorage.getItem(STORAGE_KEY_ACCESS)
-      if (!token) return
-
-      const res = await axios.get('/api/v1/gestionnaire/me/parking', {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-
-      if (res.data.success && res.data.data) {
-        // Mettre à jour l'user avec les infos parking
-        setUser(prevUser => {
-          if (!prevUser) return null
-          const updatedUser = {
-            ...prevUser,
-            parking_id: res.data.data.id_parking,
-            parking_nom: res.data.data.nom,
-            parking_adresse: res.data.data.adresse
-          }
-          // Sauvegarder le user complet dans localStorage
-          localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updatedUser))
-          return updatedUser
-        })
-      }
-    } catch (error: any) {
-      console.warn('⚠️ Erreur chargement parking gestionnaire:', error?.response?.data?.message || error?.message)
-      // Ne pas bloquer le login si cette API échoue
-    }
-  }, [])
+    return authUser
+  }, [loadGestionnaireParking])
 
   // ─── Resend SMS ────────────────────────────────────────────
   const resendSms = useCallback(async (loginToken: string) => {
@@ -217,23 +256,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return permissions.every(perm => user.permissions.includes(perm))
   }, [user])
 
+  console.log(`🔴 [AuthProvider] Rendering with user: ${user ? `${user.nom} ${user.prenom}` : 'null'}, parking_id: ${user?.parking_id}, user_ref: `, user)
+
+  const contextValue = useMemo(() => ({
+    user,
+    loading,
+    parkingLoading,
+    login,
+    logout,
+    verifySms,
+    resendSms,
+    can,
+    hasRole,
+    hasAnyRole,
+    hasAllRoles,
+    hasPermission,
+    hasAllPermissions
+  }), [user, loading, parkingLoading, login, logout, verifySms, resendSms, can, hasRole, hasAnyRole, hasAllRoles, hasPermission, hasAllPermissions])
+
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        login,
-        logout,
-        verifySms,
-        resendSms,
-        can,
-        hasRole,
-        hasAnyRole,
-        hasAllRoles,
-        hasPermission,
-        hasAllPermissions
-      }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   )
@@ -249,7 +291,8 @@ function clearStorage() {
 export function useAuth() {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error('useAuth must be used within AuthProvider')
-  return ctx
+
+  return React.useMemo(() => ctx, [ctx.user?.id_utilisateur, ctx.loading, ctx.parkingLoading])
 }
 
 export { STORAGE_KEY_ACCESS, STORAGE_KEY_REFRESH, STORAGE_KEY_AUTH_METHOD }

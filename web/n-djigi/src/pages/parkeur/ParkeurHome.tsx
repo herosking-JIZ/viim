@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Activity, Car, Clock, TrendingUp } from 'lucide-react'
 import { parkeurService } from '@/services/api'
 import { useAuth } from '@/contexts/AuthContext'
@@ -9,13 +9,24 @@ import { AlertTriangle } from 'lucide-react'
 import type { Parking } from '@/types'
 
 export default function ParkeurHome() {
-  const { user } = useAuth()
+  const renderCountRef = useRef(0)
+  const { user, parkingLoading } = useAuth()
   const { toast } = useToast()
   const [parking, setParking] = useState<Parking | null>(null)
   const [loading, setLoading] = useState(true)
   const [pullRefreshing, setPullRefreshing] = useState(false)
+  const [showNoParking, setShowNoParking] = useState(false)
 
   const parkingId = user?.parking_id
+
+  renderCountRef.current++
+  console.log(`🟠 [ParkeurHome] RENDER #${renderCountRef.current} at ${new Date().toISOString().split('T')[1]}`, {
+    user: user ? `${user.nom} ${user.prenom} (id: ${user.id_utilisateur})` : 'null',
+    user_ref: user,
+    parkingLoading,
+    parkingId,
+    showNoParking,
+  })
 
   const load = useCallback(async () => {
     if (!parkingId) return
@@ -33,13 +44,43 @@ export default function ParkeurHome() {
     load()
   }, [load])
 
+  // Afficher le message d'erreur seulement après avoir attendu le chargement du parking
+  useEffect(() => {
+    console.log('📱 [ParkeurHome] useEffect showNoParking:', { user: !!user, parkingLoading, parkingId })
+    if (!user || parkingLoading) {
+      console.log('📱 [ParkeurHome] Condition vraie - reset showNoParking à false')
+      setShowNoParking(false)
+      return
+    }
+
+    console.log('📱 [ParkeurHome] Setting timer de 1s pour showNoParking')
+    const timer = setTimeout(() => {
+      console.log('📱 [ParkeurHome] Timer déclenché - setShowNoParking(true)')
+      setShowNoParking(true)
+    }, 1000)
+
+    return () => {
+      console.log('📱 [ParkeurHome] Cleanup timer')
+      clearTimeout(timer)
+    }
+  }, [user, parkingLoading])
+
   const handlePullRefresh = async () => {
     setPullRefreshing(true)
     await load()
     setPullRefreshing(false)
   }
 
-  if (!parkingId) {
+  // Attendre que le parking soit chargé ou que le délai expire
+  if (parkingLoading || (user && !parkingId && !showNoParking)) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent" />
+      </div>
+    )
+  }
+
+  if (!parkingId && showNoParking) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-4">
         <div className="w-16 h-16 rounded-2xl bg-warning/15 flex items-center justify-center">

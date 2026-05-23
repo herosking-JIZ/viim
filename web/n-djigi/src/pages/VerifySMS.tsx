@@ -72,12 +72,14 @@ export default function VerifySMS() {
     setLoading(true)
 
     try {
-      await verifySms(loginToken, smsCode)
+      const authenticatedUser = await verifySms(loginToken, smsCode)
 
-      // Rediriger selon le rôle de l'utilisateur
-      if (user) {
-        navigate(getRoleRedirectUrl(user.role), { replace: true })
+      // Rediriger selon le rôle de l'utilisateur (utiliser la réponse directe, pas le hook)
+      if (authenticatedUser) {
+        console.log('✅ [VerifySMS] Utilisateur authentifié:', authenticatedUser.nom, 'Rôle:', authenticatedUser.role)
+        navigate(getRoleRedirectUrl(authenticatedUser.role), { replace: true })
       } else {
+        console.log('❌ [VerifySMS] Pas d\'utilisateur retourné')
         navigate('/', { replace: true })
       }
     } catch (err: any) {

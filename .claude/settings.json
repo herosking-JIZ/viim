@@ -28,7 +28,8 @@
       "Bash(node -e \"const seed = require\\('./prisma/seed.js'\\); console.log\\('✅ Seed module loads successfully'\\);\")",
       "PowerShell(Get-ChildItem \"C:\\\\Users\\\\Kader SAWADOGO\\\\Desktop\\\\ndjigiv1\\\\web\" -Recurse -Depth 3 | Where-Object {$_.PSIsContainer} | Select-Object -ExpandProperty FullName | head -30)",
       "PowerShell(docker-compose exec -T ndjigi-backend sh -c \"cd /app && npx prisma migrate deploy\" 2>&1)",
-      "PowerShell(tail -30)"
+      "PowerShell(tail -30)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\Kader SAWADOGO\\\\Desktop\\\\ndjigiv1\\\\mobile\\\\lib\\\\screens\" -Recurse | Select-Object FullName, @{Name=\"Type\";Expression={if\\($_.PSIsContainer\\){\"Dossier\"}else{\"Fichier\"}}} | Format-Table -AutoSize)"
     ]
   }
 }

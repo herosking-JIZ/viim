@@ -51,7 +51,7 @@ export default function ParkeurMaintenance() {
     } finally {
       setLoading(false)
     }
-  }, [parkingId, statutFilter, urgenceFilter, toast])
+  }, [parkingId, statutFilter, urgenceFilter])
 
   useEffect(() => {
     loadMaintenance()

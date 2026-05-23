@@ -42,7 +42,7 @@ const ParkeurController = {
       return res.status(200).json({
         success: true,
         data: {
-          parking,
+          ...parking,
           capacite_dispo: (parking.capacite_totale || 0) - parking.capacite_occupee,
           vehicules_bon_etat: vehiculesBonEtat
         }

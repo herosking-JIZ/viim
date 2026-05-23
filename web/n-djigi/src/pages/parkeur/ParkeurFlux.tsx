@@ -65,7 +65,7 @@ export default function ParkeurFlux() {
     } finally {
       setLoading(false)
     }
-  }, [parkingId, tab, search, toast])
+  }, [parkingId, tab, search])
 
   useEffect(() => {
     loadData()

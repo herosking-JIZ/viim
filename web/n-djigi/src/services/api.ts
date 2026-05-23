@@ -565,7 +565,11 @@ export const gestionnaireService = {
 export const parkeurService = {
   // ── Dashboard ──────────────────────────────────────────────────
   detailParking: async (parkingId: string) => {
-    if (IS_DEMO) { await delay(); return { parking: _parkings[0], capacite_dispo: 20, vehicules_bon_etat: 15 } }
+    if (IS_DEMO) {
+      await delay()
+      const p = _parkings[0]
+      return { ...p, capacite_dispo: (p.capacite_totale || 0) - (p.capacite_occupee || 0), vehicules_bon_etat: 15 }
+    }
     const { data } = await api.get<ApiResponse<any>>(`/parkings/${parkingId}/detail-parkeur`)
     return extractData(data)
   },

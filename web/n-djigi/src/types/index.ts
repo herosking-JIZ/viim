@@ -257,7 +257,7 @@ export interface Parking {
   capacite_dispo?: number
   vehicules_bon_etat?: number
   horaires?: string | null
-  actif: boolean
+  actif?: boolean
   latitude?: number | null
   longitude?: number | null
 }

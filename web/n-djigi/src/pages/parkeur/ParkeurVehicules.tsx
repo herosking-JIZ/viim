@@ -26,7 +26,7 @@ export default function ParkeurVehicules() {
     } finally {
       setLoading(false)
     }
-  }, [parkingId, toast])
+  }, [parkingId])
 
   useEffect(() => {
     loadVehicules()

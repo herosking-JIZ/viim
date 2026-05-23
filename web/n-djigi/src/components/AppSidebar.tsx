@@ -19,7 +19,7 @@ const ADMIN_NAV = [
 ]
 
 const GESTIONNAIRE_NAV = [
-  { to: '/', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
+  { to: '/parkeur', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
   { to: '/parkeur/flux', label: 'Entrées/Sorties', icon: ArrowRightLeft },
   { to: '/parkeur/maintenance', label: 'Maintenance', icon: Wrench },
   { to: '/parkeur/vehicules', label: 'Véhicules', icon: List },

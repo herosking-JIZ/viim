@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { useMemo } from 'react'
 
 type ToastVariant = 'default' | 'destructive' | 'success'
 
@@ -30,8 +31,16 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setToasts((prev) => prev.filter((x) => x.id !== id))
   }, [])
 
+  console.log(`🔵 [ToastProvider] Rendering with ${toasts.length} toasts`)
+
+  const contextValue = useMemo(() => ({
+    toasts,
+    toast,
+    dismiss
+  }), [toasts, toast, dismiss])
+
   return (
-    <ToastContext.Provider value={{ toasts, toast, dismiss }}>
+    <ToastContext.Provider value={contextValue}>
       {children}
     </ToastContext.Provider>
   )
@@ -40,5 +49,5 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 export function useToast() {
   const ctx = React.useContext(ToastContext)
   if (!ctx) throw new Error('useToast must be inside ToastProvider')
-  return ctx
+  return React.useMemo(() => ctx, [ctx.toasts.length])
 }

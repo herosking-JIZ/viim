@@ -28,7 +28,7 @@ export function getRoleRedirectUrl(role: UserRole | undefined): string {
       return '/dashboard'
 
     case 'gestionnaire':
-      return '/manager'
+      return '/parkeur'
 
     // Les rôles mobile-only ne doivent pas accéder au web
     // (bloqués au backend avec 403)
