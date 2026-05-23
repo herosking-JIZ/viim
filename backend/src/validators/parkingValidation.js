@@ -11,22 +11,43 @@ const parkingSchema = Joi.object({
   horaires:   Joi.string().min(5).max(100).optional(),
 })
 
+// ─── PARKEUR FLUX VALIDATION ─────────────────────────────────
+
+const entreeSchema = Joi.object({
+  id_vehicule:    Joi.string().uuid().required(),
+  id_utilisateur: Joi.string().uuid().required(),
+  etat_vehicule:  Joi.string().valid('bon_etat', 'besoin_maintenance', 'en_maintenance', 'retire').required(),
+  commentaire:    Joi.string().max(500).allow('', null).optional(),
+})
+
+const sortieSchema = Joi.object({
+  id_vehicule:    Joi.string().uuid().required(),
+  id_utilisateur: Joi.string().uuid().required(),
+  etat_vehicule:  Joi.string().valid('bon_etat', 'besoin_maintenance', 'en_maintenance', 'retire').required(),
+  commentaire:    Joi.string().max(500).allow('', null).optional(),
+})
+
+// ─── MAINTENANCE VALIDATION ───────────────────────────────────
+
+const maintenanceSchema = Joi.object({
+  id_vehicule:  Joi.string().uuid().required(),
+  type:         Joi.string().valid('mecanique', 'electricite', 'carrosserie').required(),
+  urgence:      Joi.string().valid('basse', 'normale', 'haute').optional().default('normale'),
+  description:  Joi.string().min(5).max(1000).required()
+    .messages({ 'string.min': 'La description doit faire au moins 5 caractères' }),
+})
+
+const updateMaintenanceStatusSchema = Joi.object({
+  statut:      Joi.string().valid('en_attente', 'confirmee', 'en_reparation', 'terminee', 'bon_etat').required(),
+  commentaire: Joi.string().max(500).allow('', null).optional(),
+})
+
+// ─── ANCIEN FORMAT (Compatibilité) ───────────────────────────
+
 const receptionSchema = Joi.object({
   immatriculation: Joi.string().min(4).max(20).uppercase().required(),
   etat_vehicule:   Joi.string().valid('bon', 'a_verifier', 'dommage').required(),
   commentaire:     Joi.string().allow('', null).optional(),
-})
-
-const sortieSchema = Joi.object({
-  immatriculation: Joi.string().min(4).max(20).uppercase().required(),
-  etat_vehicule:   Joi.string().valid('bon', 'a_verifier', 'dommage').required(),
-  commentaire:     Joi.string().allow('', null).optional(),
-})
-
-const maintenanceSchema = Joi.object({
-  id_vehicule: Joi.string().uuid().required(),
-  motif:       Joi.string().min(5).required()
-    .messages({ 'string.min': 'Le motif doit faire au moins 5 caractères' }),
 })
 
 const updateVehiculeSchema = Joi.object({
@@ -41,10 +62,12 @@ const mouvementsQuerySchema = Joi.object({
 })
 
 module.exports = {
-  receptionSchema,
+  parkingSchema,
+  entreeSchema,
   sortieSchema,
   maintenanceSchema,
+  updateMaintenanceStatusSchema,
+  receptionSchema,
   updateVehiculeSchema,
   mouvementsQuerySchema,
-  parkingSchema,
 }

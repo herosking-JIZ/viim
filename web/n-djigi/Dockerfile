@@ -19,7 +19,7 @@ RUN npm ci
 # Copier le code source
 COPY . .
 
-# Builder l'application Vite
+# Builder l'application Vitess
 RUN npm run build
 
 # Stage 2: Runtime avec Nginx

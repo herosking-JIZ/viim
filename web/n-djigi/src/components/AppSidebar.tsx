@@ -2,7 +2,7 @@ import { NavLink, useNavigate, Link } from 'react-router-dom'
 import {
   LayoutDashboard, Users, FileText, Car, CreditCard,
   ParkingCircle, HeadphonesIcon, Settings, LogOut, MapPin,
-  ChevronRight, KeyRound,
+  ChevronRight, KeyRound, ArrowRightLeft, Wrench, List,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { cn, getInitials } from '@/lib/utils'
@@ -19,7 +19,10 @@ const ADMIN_NAV = [
 ]
 
 const GESTIONNAIRE_NAV = [
-  { to: '/', label: 'Mon Parking', icon: ParkingCircle, exact: true },
+  { to: '/', label: 'Tableau de bord', icon: LayoutDashboard, exact: true },
+  { to: '/parkeur/flux', label: 'Entrées/Sorties', icon: ArrowRightLeft },
+  { to: '/parkeur/maintenance', label: 'Maintenance', icon: Wrench },
+  { to: '/parkeur/vehicules', label: 'Véhicules', icon: List },
 ]
 
 const ROLE_LABELS: Record<string, string> = {

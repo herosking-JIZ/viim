@@ -109,8 +109,11 @@ export interface AuthUser {
   roles: UserRole[]
   // Permissions accordées par le backend
   permissions: string[]
-  // parking_id si gestionnaire (récupéré depuis le profil)
+  // ────── Infos parking si gestionnaire ──────────────────
+  // Récupérées via GET /gestionnaire/me/parking après login
   parking_id?: string
+  parking_nom?: string
+  parking_adresse?: string
 }
 
 export interface LoginCredentials {
@@ -251,6 +254,8 @@ export interface Parking {
   ville: string
   capacite_totale: number
   capacite_occupee: number
+  capacite_dispo?: number
+  vehicules_bon_etat?: number
   horaires?: string | null
   actif: boolean
   latitude?: number | null
@@ -273,9 +278,11 @@ export interface VehiculeParking {
   marque: string
   modele: string
   categorie: string
+  couleur?: string
   proprietaire_nom: string
   statut: 'disponible' | 'en_location' | 'maintenance'
-  etat: EtatVehicule
+  etat: EtatVehiculeParking
+  date_entree?: string
 }
 
 export interface MouvementParking {
@@ -286,7 +293,7 @@ export interface MouvementParking {
   parking_nom: string
   parkeur_nom: string
   type_mouvement: TypeMouvement
-  etat_vehicule: EtatVehicule
+  etat_vehicule: EtatVehiculeParking
   date_mouvement: string
   commentaire?: string | null
 }
@@ -440,6 +447,67 @@ export interface TopChauffeur {
   rang: number
   nom: string
   chiffre_affaires: number
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MAINTENANCE (Parkeur)
+// ═══════════════════════════════════════════════════════════════
+
+export type EtatVehiculeParking = 'bon_etat' | 'besoin_maintenance' | 'en_maintenance' | 'retire'
+export type TypeMaintenance = 'mecanique' | 'electricite' | 'carrosserie'
+export type MaintenanceStatut = 'en_attente' | 'confirmee' | 'en_reparation' | 'terminee' | 'bon_etat'
+export type MaintenanceUrgence = 'basse' | 'normale' | 'haute'
+
+export interface MaintenanceHistoryStep {
+  id_step: string
+  statut_ancien?: MaintenanceStatut
+  statut_nouveau: MaintenanceStatut
+  commentaire?: string
+  date_transition: string
+}
+
+export interface MaintenancePhoto {
+  id_photo: string
+  fileKey: string
+  uploadedAt: string
+}
+
+export interface MaintenanceRequest {
+  id_maintenance: string
+  immatriculation: string
+  marque: string
+  modele: string
+  type: TypeMaintenance
+  statut: MaintenanceStatut
+  urgence: MaintenanceUrgence
+  description: string
+  date_creation: string
+  date_resolution?: string | null
+  gestionnaire_nom: string
+  historique?: MaintenanceHistoryStep[]
+  photos?: MaintenancePhoto[]
+}
+
+export interface CreateMaintenancePayload {
+  id_vehicule?: string
+  immatriculation: string
+  type: TypeMaintenance
+  urgence: MaintenanceUrgence
+  description: string
+}
+
+export interface EntryFluxPayload {
+  id_vehicule: string
+  id_utilisateur: string
+  etat_vehicule: EtatVehiculeParking
+  commentaire?: string
+}
+
+export interface ExitFluxPayload {
+  id_vehicule: string
+  id_utilisateur: string
+  etat_vehicule: EtatVehiculeParking
+  commentaire?: string
 }
 
 

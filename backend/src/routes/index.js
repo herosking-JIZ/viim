@@ -65,6 +65,8 @@ router.use('/proprietaire', proprietaireRoute);
 router.use('/reservation', reservationRoute);
 router.use('/utilisateurs', utilisateurRoute);
 router.use('/admin/gestionnaires', gestionnaireRoute);
+// ✅ Routes pour gestionnaire authentifié (opérations personnelles)
+router.use('/gestionnaire', gestionnaireRoute);
 router.use('/vehicule', vehiculeRoute);
 router.use('/zone-tarifaire', zoneTarifaireRoute);
 router.use('/dashboard', dashboardRoute);

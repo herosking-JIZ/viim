@@ -525,95 +525,136 @@ export const gestionnaireService = {
     )
     return extractData(data)
   },
+
+  // Get my parking (gestionnaire authenticated)
+  getMyParking: async (): Promise<{
+    id_parking: string
+    nom: string
+    adresse: string
+    ville: string
+    capacite_totale: number
+    capacite_occupee: number
+  }> => {
+    if (IS_DEMO) {
+      await delay()
+      const parking = _parkings[0]
+      return {
+        id_parking: parking.id_parking,
+        nom: parking.nom,
+        adresse: parking.adresse,
+        ville: parking.ville || 'Ouagadougou',
+        capacite_totale: parking.capacite_totale || 50,
+        capacite_occupee: parking.capacite_occupee || 12
+      }
+    }
+    const { data } = await api.get<ApiResponse<{
+      id_parking: string
+      nom: string
+      adresse: string
+      ville: string
+      capacite_totale: number
+      capacite_occupee: number
+    }>>('/gestionnaire/me/parking')
+    return extractData(data)
+  },
 }
 
 // ═══════════════════════════════════════════════════════════════
 // PARKEUR (gestionnaire)
 // ═══════════════════════════════════════════════════════════════
 export const parkeurService = {
-  monParking: async (parkingId: string): Promise<Parking> => {
-    if (IS_DEMO) { await delay(); return _parkings.find((p) => p.id_parking === parkingId) ?? _parkings[0] }
-    const { data } = await api.get<ApiResponse<Parking>>(`/parkings/${parkingId}`)
+  // ── Dashboard ──────────────────────────────────────────────────
+  detailParking: async (parkingId: string) => {
+    if (IS_DEMO) { await delay(); return { parking: _parkings[0], capacite_dispo: 20, vehicules_bon_etat: 15 } }
+    const { data } = await api.get<ApiResponse<any>>(`/parkings/${parkingId}/detail-parkeur`)
     return extractData(data)
   },
-  vehiculesPresents: async (parkingId: string): Promise<VehiculeParking[]> => {
+
+  vehiculesGares: async (parkingId: string): Promise<VehiculeParking[]> => {
     if (IS_DEMO) { await delay(); return _vehicules }
     const { data } = await api.get<ApiResponse<VehiculeParking[]>>(`/parkings/${parkingId}/vehicules`)
     return extractData(data)
   },
-  mouvements: async (parkingId: string, params?: { search?: string }): Promise<MouvementParking[]> => {
+
+  mouvementsParkeur: async (parkingId: string, params?: { page?: number; limit?: number; search?: string }): Promise<PaginatedResponse<MouvementParking>> => {
     if (IS_DEMO) {
       await delay()
       const q = (params?.search ?? '').toLowerCase()
-      return _mouvements.filter((m) => m.id_parking === parkingId && (!q || m.immatriculation.toLowerCase().includes(q) || (m.commentaire ?? '').toLowerCase().includes(q)))
+      const filtered = _mouvements.filter((m) => m.id_parking === parkingId && (!q || m.immatriculation.toLowerCase().includes(q)))
+      return mock.paginate(filtered, params?.page ?? 1, params?.limit ?? 20)
     }
-    const { data } = await api.get<ApiResponse<MouvementParking[]>>(`/parkings/${parkingId}/mouvements`, { params })
+    const { data } = await api.get<ApiResponse<PaginatedResponse<MouvementParking>>>(`/parkings/${parkingId}/mouvements-parkeur`, { params })
     return extractData(data)
   },
-  receptionVehicule: async (parkingId: string, payload: { immatriculation: string; etat_vehicule: string; commentaire?: string }): Promise<void> => {
-    if (IS_DEMO) {
-      await delay(400)
-      const newMvt: MouvementParking = {
-        id_log: `m-${Date.now()}`, id_vehicule: `v-${Date.now()}`,
-        immatriculation: payload.immatriculation, id_parking: parkingId,
-        parking_nom: _parkings.find((p) => p.id_parking === parkingId)?.nom ?? 'Parking',
-        parkeur_nom: 'Gestionnaire', type_mouvement: 'entree',
-        etat_vehicule: payload.etat_vehicule as any, date_mouvement: new Date().toISOString(),
-        commentaire: payload.commentaire,
-      }
-      _mouvements = [newMvt, ..._mouvements]
-      _parkings = _parkings.map((p) => p.id_parking === parkingId ? { ...p, capacite_occupee: p.capacite_occupee + 1 } : p)
-      return
-    }
+
+  // ── Flux Entrée/Sortie ────────────────────────────────────────
+  enregistrerEntree: async (parkingId: string, payload: { id_vehicule?: string; id_utilisateur: string; etat_vehicule: string; commentaire?: string }): Promise<void> => {
+    if (IS_DEMO) { await delay(400); return }
     const { data } = await api.post<ApiResponse<null>>(`/parkings/${parkingId}/entree`, payload)
     extractData(data)
   },
-  sortieVehicule: async (parkingId: string, payload: { immatriculation: string; etat_vehicule: string; commentaire?: string }): Promise<void> => {
-    if (IS_DEMO) {
-      await delay(400)
-      const newMvt: MouvementParking = {
-        id_log: `m-${Date.now()}`, id_vehicule: `v-${Date.now()}`,
-        immatriculation: payload.immatriculation, id_parking: parkingId,
-        parking_nom: _parkings.find((p) => p.id_parking === parkingId)?.nom ?? 'Parking',
-        parkeur_nom: 'Gestionnaire', type_mouvement: 'sortie',
-        etat_vehicule: payload.etat_vehicule as any, date_mouvement: new Date().toISOString(),
-        commentaire: payload.commentaire,
-      }
-      _mouvements = [newMvt, ..._mouvements]
-      _parkings = _parkings.map((p) => p.id_parking === parkingId ? { ...p, capacite_occupee: Math.max(0, p.capacite_occupee - 1) } : p)
-      return
-    }
+
+  enregistrerSortie: async (parkingId: string, payload: { id_vehicule?: string; id_utilisateur: string; etat_vehicule: string; commentaire?: string }): Promise<void> => {
+    if (IS_DEMO) { await delay(400); return }
     const { data } = await api.post<ApiResponse<null>>(`/parkings/${parkingId}/sortie`, payload)
     extractData(data)
   },
-  updateVehicule: async (vehiculeId: string, payload: { immatriculation: string; marque: string; modele: string; categorie: string }): Promise<void> => {
-    if (IS_DEMO) {
-      await delay()
-      _vehicules = _vehicules.map((v) => v.id_vehicule === vehiculeId ? { ...v, ...payload } : v)
-      return
-    }
-    const { data } = await api.patch<ApiResponse<null>>(`/vehicules/${vehiculeId}`, payload)
+
+  // ── Maintenance ────────────────────────────────────────────────
+  listerMaintenance: async (parkingId: string, params?: { page?: number; limit?: number; statut?: string; urgence?: string }) => {
+    if (IS_DEMO) { await delay(); return { data: [], total: 0, page: 1, limit: 20 } }
+    const { data } = await api.get<ApiResponse<PaginatedResponse<any>>>(`/parkings/${parkingId}/maintenance`, { params })
+    return extractData(data)
+  },
+
+  creerMaintenance: async (parkingId: string, payload: { id_vehicule?: string; immatriculation?: string; type: string; urgence?: string; description: string }): Promise<void> => {
+    if (IS_DEMO) { await delay(400); return }
+    const { data } = await api.post<ApiResponse<null>>(`/parkings/${parkingId}/maintenance`, payload)
     extractData(data)
   },
-  declencherMaintenance: async (parkingId: string, vehiculeId: string, motif: string): Promise<void> => {
-    if (IS_DEMO) {
-      await delay(400)
-      _vehicules = _vehicules.map((v) => v.id_vehicule === vehiculeId ? { ...v, statut: 'maintenance' as const } : v)
-      const veh = _vehicules.find((v) => v.id_vehicule === vehiculeId)
-      if (veh) {
-        const mvt: MouvementParking = {
-          id_log: `m-${Date.now()}`, id_vehicule: vehiculeId, immatriculation: veh.immatriculation,
-          id_parking: parkingId, parking_nom: _parkings.find((p) => p.id_parking === parkingId)?.nom ?? '',
-          parkeur_nom: 'Gestionnaire', type_mouvement: 'sortie', etat_vehicule: 'a_verifier',
-          date_mouvement: new Date().toISOString(), commentaire: `🔧 Maintenance déclenchée — ${motif}`,
-        }
-        _mouvements = [mvt, ..._mouvements]
-      }
-      return
-    }
-    const { data } = await api.post<ApiResponse<null>>(`/parkings/${parkingId}/maintenance`, { id_vehicule: vehiculeId, motif })
+
+  obtenirMaintenance: async (parkingId: string, maintenanceId: string) => {
+    if (IS_DEMO) { await delay(); return {} }
+    const { data } = await api.get<ApiResponse<any>>(`/parkings/${parkingId}/maintenance/${maintenanceId}`)
+    return extractData(data)
+  },
+
+  mettreAJourMaintenanceStatut: async (parkingId: string, maintenanceId: string, payload: { statut: string; commentaire?: string }): Promise<void> => {
+    if (IS_DEMO) { await delay(400); return }
+    const { data } = await api.patch<ApiResponse<null>>(`/parkings/${parkingId}/maintenance/${maintenanceId}`, payload)
     extractData(data)
   },
+
+  // ── Photos ─────────────────────────────────────────────────────
+  uploadPhotoMouvement: async (mouvementId: string, file: File): Promise<{ id_photo: string; url: string }> => {
+    if (IS_DEMO) { await delay(600); return { id_photo: `p-${Date.now()}`, url: '/mock-photo.jpg' } }
+    const formData = new FormData()
+    formData.append('photo', file)
+    const { data } = await api.post<ApiResponse<{ id_photo: string; url: string }>>(
+      `/mouvements/${mouvementId}/photos`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    )
+    return extractData(data)
+  },
+
+  uploadPhotoMaintenance: async (maintenanceId: string, file: File): Promise<{ id_photo: string; url: string }> => {
+    if (IS_DEMO) { await delay(600); return { id_photo: `p-${Date.now()}`, url: '/mock-photo.jpg' } }
+    const formData = new FormData()
+    formData.append('photo', file)
+    const { data } = await api.post<ApiResponse<{ id_photo: string; url: string }>>(
+      `/maintenance/${maintenanceId}/photos`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    )
+    return extractData(data)
+  },
+
+  deletePhoto: async (photoId: string): Promise<void> => {
+    if (IS_DEMO) { await delay(300); return }
+    const { data } = await api.delete<ApiResponse<null>>(`/photos/${photoId}`)
+    extractData(data)
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════

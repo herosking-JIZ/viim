@@ -9,11 +9,32 @@ datasource db {
   provider = "postgresql"
 }
 
+enum statut_validation {
+  en_attente
+  valide
+  refuse
+  suspendu
+}
+
+enum etat_vehicule {
+  bon_etat
+  besoin_maintenance
+  en_maintenance
+  retire
+}
+
 enum trajet_statut {
   en_attente
   en_cours
   termine
   annule
+}
+
+enum type_mouvement_parking {
+  entree
+  sortie
+  reprise
+  maintenance
 }
 
 enum TypeMoyenPaiement {
@@ -34,6 +55,27 @@ enum ProvisioningIncidentStatus {
   pending
   resolved
   manual_intervention_required
+}
+
+// ─── ENUMS PARKEUR ─────────────────────────────────────────
+enum type_maintenance {
+  mecanique
+  electricite
+  carrosserie
+}
+
+enum maintenance_statut {
+  en_attente
+  confirmee
+  en_reparation
+  terminee
+  bon_etat
+}
+
+enum maintenance_urgence {
+  basse
+  normale
+  haute
 }
 
 model affectation_vehicule {
@@ -101,7 +143,7 @@ model document {
   title               String?     @db.VarChar(200)
   fileKey             String?     @unique // YYYY-MM/{userId}/{uuid}{ext}
   mimeType            String?     @db.VarChar(100)
-  fileSize            BigInt?     // File size in bytes
+  fileSize            BigInt? // File size in bytes
   storageHash         String?     @db.VarChar(64) // SHA256 hash (hex)
   status              String?     @default("READY") @db.VarChar(20) // PENDING|READY|FAILED
   motif_rejet         String?
@@ -139,18 +181,78 @@ model incident_securite {
   trajet             trajet?     @relation(fields: [id_trajet], references: [id_trajet], onDelete: NoAction, onUpdate: NoAction)
 }
 
+model mouvement_photo {
+  id_photo       String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_mouvement   String? @db.Uuid
+  id_maintenance String? @db.Uuid
+
+  filename   String   @db.VarChar(255)
+  fileKey    String   @unique
+  filepath   String?  @db.Text
+  mimeType   String   @db.VarChar(50)
+  fileSize   BigInt
+  uploadedAt DateTime @default(now()) @db.Timestamp(6)
+
+  journal_parking journal_parking? @relation(fields: [id_mouvement], references: [id_log], onDelete: Cascade, onUpdate: NoAction)
+  maintenance     maintenance?     @relation(fields: [id_maintenance], references: [id_maintenance], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([id_mouvement], map: "idx_mouvement_photo_mouvement")
+  @@index([id_maintenance], map: "idx_mouvement_photo_maintenance")
+}
+
 model journal_parking {
-  id_log             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  id_vehicule        String      @db.Uuid
-  id_parking         String      @db.Uuid
-  id_gestionnaire    String      @db.Uuid
-  type_mouvement     String?     @db.VarChar(20)
-  etat_vehicule      String?     @db.VarChar(20)
-  besoin_maintenance Boolean?    @default(false)
-  date_mouvement     DateTime?   @default(now()) @db.Timestamp(6)
-  utilisateur        utilisateur @relation(fields: [id_gestionnaire], references: [id_utilisateur], onDelete: NoAction, onUpdate: NoAction)
-  parking            parking     @relation(fields: [id_parking], references: [id_parking], onDelete: NoAction, onUpdate: NoAction)
-  vehicule           vehicule    @relation(fields: [id_vehicule], references: [id_vehicule], onDelete: NoAction, onUpdate: NoAction)
+  id_log             String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_vehicule        String                 @db.Uuid
+  id_parking         String                 @db.Uuid
+  id_utilisateur     String                 @db.Uuid
+  type_mouvement     type_mouvement_parking
+  etat_vehicule      etat_vehicule
+  besoin_maintenance Boolean?               @default(false)
+  commentaire        String?                @db.Text
+  date_mouvement     DateTime?              @default(now()) @db.Timestamp(6)
+
+  parking         parking           @relation(fields: [id_parking], references: [id_parking], onDelete: NoAction, onUpdate: NoAction)
+  vehicule        vehicule          @relation(fields: [id_vehicule], references: [id_vehicule], onDelete: NoAction, onUpdate: NoAction)
+  utilisateur     utilisateur       @relation(fields: [id_utilisateur], references: [id_utilisateur], onDelete: NoAction, onUpdate: NoAction)
+  mouvementPhotos mouvement_photo[]
+
+  @@index([id_parking, date_mouvement], map: "idx_journal_parking_parking_date")
+}
+
+model maintenance {
+  id_maintenance  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_vehicule     String              @db.Uuid
+  id_parking      String              @db.Uuid
+  id_gestionnaire String              @db.Uuid
+  type            type_maintenance
+  statut          maintenance_statut  @default(en_attente)
+  urgence         maintenance_urgence @default(normale)
+  description     String              @db.Text
+  date_creation   DateTime            @default(now()) @db.Timestamp(6)
+  date_resolution DateTime?           @db.Timestamp(6)
+
+  vehicule     vehicule           @relation(fields: [id_vehicule], references: [id_vehicule], onDelete: NoAction, onUpdate: NoAction)
+  parking      parking            @relation(fields: [id_parking], references: [id_parking], onDelete: NoAction, onUpdate: NoAction)
+  gestionnaire utilisateur        @relation(fields: [id_gestionnaire], references: [id_utilisateur], onDelete: NoAction, onUpdate: NoAction)
+  historique   maintenance_step[]
+  photos       mouvement_photo[]
+
+  @@index([id_vehicule], map: "idx_maintenance_vehicule")
+  @@index([id_parking], map: "idx_maintenance_parking")
+  @@index([statut], map: "idx_maintenance_statut")
+}
+
+model maintenance_step {
+  id_step         String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_maintenance  String              @db.Uuid
+  statut_ancien   maintenance_statut?
+  statut_nouveau  maintenance_statut
+  commentaire     String?             @db.Text
+  date_transition DateTime            @default(now()) @db.Timestamp(6)
+
+  maintenance maintenance @relation(fields: [id_maintenance], references: [id_maintenance], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([id_maintenance, date_transition], map: "idx_maintenance_step_maintenance_date")
 }
 
 model location {
@@ -226,6 +328,8 @@ model parking {
   horaires             String?                @db.VarChar(100)
   gestionnaire_parking gestionnaire_parking[]
   journal_parking      journal_parking[]
+  vehicule             vehicule[]
+  maintenance_requests maintenance[]
 }
 
 model passager {
@@ -315,54 +419,53 @@ model trajet {
 }
 
 model utilisateur {
-  id_utilisateur                       String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  keycloak_id                          String?               @unique @db.Uuid
-  numero_telephone                     String                @unique @db.VarChar(20)
-  phone                                String?               @unique @db.VarChar(20)
-  email                                String                @unique @db.VarChar(255)
-  nom                                  String                @db.VarChar(100)
-  prenom                               String                @db.VarChar(100)
+  id_utilisateur                       String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  keycloak_id                          String?                  @unique @db.Uuid
+  numero_telephone                     String                   @unique @db.VarChar(20)
+  phone                                String?                  @unique @db.VarChar(20)
+  email                                String                   @unique @db.VarChar(255)
+  nom                                  String                   @db.VarChar(100)
+  prenom                               String                   @db.VarChar(100)
   mot_de_passe_hash                    String?
   /// Flag indicating user must change their password on first login
-  mot_de_passe_temporaire              Boolean               @default(false)
+  mot_de_passe_temporaire              Boolean                  @default(false)
   photo_profil                         String?
   adresse                              String?
-  tentatives_connexion                 Int                   @default(0)
+  tentatives_connexion                 Int                      @default(0)
   bloque_jusqu_au                      DateTime?
-  date_inscription                     DateTime              @default(now()) @db.Timestamp(6)
-  statut_compte                        String                @default("actif") @db.VarChar(20)
-  note_moyenne                         Decimal?              @db.Decimal(3, 2)
+  date_inscription                     DateTime                 @default(now()) @db.Timestamp(6)
+  statut_compte                        String                   @default("actif") @db.VarChar(20)
+  note_moyenne                         Decimal?                 @db.Decimal(3, 2)
   /// Soft delete : null = actif, date = supprimé le
   supprime_le                          DateTime?
-  auth_provider                        String                @default("email") @db.VarChar(20)
-  deux_fa_activee                      Boolean               @default(false)
-  reset_token                          String?               @db.Uuid
-  reset_token_expire                   DateTime?             @db.Timestamp(6)
-  active_role                          String?               @db.VarChar(20)
+  auth_provider                        String                   @default("email") @db.VarChar(20)
+  deux_fa_activee                      Boolean                  @default(false)
+  reset_token                          String?                  @db.Uuid
+  reset_token_expire                   DateTime?                @db.Timestamp(6)
+  active_role                          String?                  @db.VarChar(20)
   /// OTP Auth (Phase 5): Technical password encrypted with AES-256-GCM
   /// Format: "iv:encryptedData:authTag" (hex)
-  tech_password_encrypted              String?               @db.Text
+  tech_password_encrypted              String?                  @db.Text
   /// User authenticated via OTP SMS
-  auth_method_otp                      Boolean               @default(false)
+  auth_method_otp                      Boolean                  @default(false)
   /// Admin who created this user (for audit)
-  created_by                           String?               @db.Uuid
+  created_by                           String?                  @db.Uuid
   /// Invitation system (for account activation)
-  invitation_token                     String?               @unique @db.Uuid
-  invitation_token_expire              DateTime?             @db.Timestamp(6)
-  invitation_sent_at                   DateTime?             @db.Timestamp(6)
-  invitation_used_at                   DateTime?             @db.Timestamp(6)
-  invitation_resend_count              Int                   @default(0)
+  invitation_token                     String?                  @unique @db.Uuid
+  invitation_token_expire              DateTime?                @db.Timestamp(6)
+  invitation_sent_at                   DateTime?                @db.Timestamp(6)
+  invitation_used_at                   DateTime?                @db.Timestamp(6)
+  invitation_resend_count              Int                      @default(0)
   ticket                               ticket[]
-  ticket_assigne                       ticket[]              @relation("ticket_agent")
+  ticket_assigne                       ticket[]                 @relation("ticket_agent")
   remboursement                        remboursement[]
-  remboursement_traite                 remboursement[]       @relation("remboursement_agent")
-  avis_avis_id_evaluateurToutilisateur avis[]                @relation("avis_id_evaluateurToutilisateur")
-  avis_avis_id_evalueToutilisateur     avis[]                @relation("avis_id_evalueToutilisateur")
+  remboursement_traite                 remboursement[]          @relation("remboursement_agent")
+  avis_avis_id_evaluateurToutilisateur avis[]                   @relation("avis_id_evaluateurToutilisateur")
+  avis_avis_id_evalueToutilisateur     avis[]                   @relation("avis_id_evalueToutilisateur")
   chauffeur                            chauffeur?
   document                             document[]
   gestionnaire                         gestionnaire_parking?
   incident_securite                    incident_securite[]
-  journal_parking                      journal_parking[]
   notification                         notification[]
   password_reset_tokens                password_reset_token[]
   paiement                             paiement[]
@@ -373,6 +476,8 @@ model utilisateur {
   utilisation_promo                    utilisation_promo[]
   moyens_paiement                      moyens_paiement[]
   provisioning_incidents               provisioning_incidents[]
+  journal_parking                      journal_parking[]
+  maintenance_requests                 maintenance[]
 }
 
 model password_reset_token {
@@ -418,6 +523,7 @@ model utilisation_promo {
 model vehicule {
   id_vehicule          String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   id_proprietaire      String                @db.Uuid
+  id_parking           String?               @db.Uuid
   immatriculation      String                @unique @db.VarChar(20)
   marque               String                @db.VarChar(60)
   modele               String                @db.VarChar(60)
@@ -439,6 +545,8 @@ model vehicule {
   proprietaire         proprietaire          @relation(fields: [id_proprietaire], references: [id_proprietaire], onDelete: NoAction, onUpdate: NoAction)
   id_categorie         String                @db.Uuid
   categorie_vehicule   categorie_vehicule    @relation(fields: [id_categorie], references: [id_categorie], onDelete: NoAction, onUpdate: NoAction)
+  parking              parking?              @relation(fields: [id_parking], references: [id_parking], onDelete: NoAction, onUpdate: NoAction)
+  maintenance_requests maintenance[]
 
   @@index([id_categorie], map: "idx_vehicule_categorie")
   @@index([id_proprietaire], map: "idx_vehicule_proprietaire")
@@ -577,18 +685,18 @@ model moyens_paiement {
 }
 
 model provisioning_incidents {
-  id_incident                   String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  type                          ProvisioningIncidentType
-  status                        ProvisioningIncidentStatus   @default(pending)
-  user_email                    String?                      @db.VarChar(255)
-  keycloak_id                   String?                      @db.Uuid
-  id_utilisateur                String?                      @db.Uuid
-  error_message                 String?
-  error_details                 Json?
-  created_at                    DateTime                     @default(now()) @db.Timestamp(6)
-  resolved_at                   DateTime?                    @db.Timestamp(6)
-  resolved_by                   String?                      @db.VarChar(255) // Admin who resolved it
-  resolution_notes              String?
+  id_incident      String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type             ProvisioningIncidentType
+  status           ProvisioningIncidentStatus @default(pending)
+  user_email       String?                    @db.VarChar(255)
+  keycloak_id      String?                    @db.Uuid
+  id_utilisateur   String?                    @db.Uuid
+  error_message    String?
+  error_details    Json?
+  created_at       DateTime                   @default(now()) @db.Timestamp(6)
+  resolved_at      DateTime?                  @db.Timestamp(6)
+  resolved_by      String?                    @db.VarChar(255) // Admin who resolved it
+  resolution_notes String?
 
   utilisateur utilisateur? @relation(fields: [id_utilisateur], references: [id_utilisateur], onDelete: NoAction, onUpdate: NoAction)
 

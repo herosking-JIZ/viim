@@ -101,13 +101,13 @@ export const MOCK_PARKINGS: Parking[] = [
 ]
 
 export const MOCK_VEHICULES_PARKING: VehiculeParking[] = [
-  { id_vehicule: 'v1', immatriculation: 'AA-1234-BF', marque: 'Toyota', modele: 'Corolla', categorie: 'berline', proprietaire_nom: 'Salif Kaboré', statut: 'disponible', etat: 'bon' },
-  { id_vehicule: 'v2', immatriculation: 'BB-5678-BF', marque: 'Honda', modele: 'CR-V', categorie: 'suv', proprietaire_nom: 'Kadiatou Ouattara', statut: 'en_location', etat: 'bon' },
-  { id_vehicule: 'v3', immatriculation: 'CC-9012-BF', marque: 'Renault', modele: 'Clio', categorie: 'berline', proprietaire_nom: 'Ibrahim Zongo', statut: 'maintenance', etat: 'a_verifier' },
+  { id_vehicule: 'v1', immatriculation: 'AA-1234-BF', marque: 'Toyota', modele: 'Corolla', categorie: 'berline', proprietaire_nom: 'Salif Kaboré', statut: 'disponible', etat: 'bon_etat' },
+  { id_vehicule: 'v2', immatriculation: 'BB-5678-BF', marque: 'Honda', modele: 'CR-V', categorie: 'suv', proprietaire_nom: 'Kadiatou Ouattara', statut: 'en_location', etat: 'bon_etat' },
+  { id_vehicule: 'v3', immatriculation: 'CC-9012-BF', marque: 'Renault', modele: 'Clio', categorie: 'berline', proprietaire_nom: 'Ibrahim Zongo', statut: 'maintenance', etat: 'besoin_maintenance' },
 ]
 
 export const MOCK_MOUVEMENTS: MouvementParking[] = [
-  { id_log: 'm1', id_vehicule: 'v1', immatriculation: 'AA-1234-BF', id_parking: 'pk-001', parking_nom: 'Parking Central Ouaga', parkeur_nom: 'Issa Compaoré', type_mouvement: 'entree', etat_vehicule: 'bon', date_mouvement: new Date(Date.now() - 2*60*60*1000).toISOString() },
+  { id_log: 'm1', id_vehicule: 'v1', immatriculation: 'AA-1234-BF', id_parking: 'pk-001', parking_nom: 'Parking Central Ouaga', parkeur_nom: 'Issa Compaoré', type_mouvement: 'entree', etat_vehicule: 'bon_etat', date_mouvement: new Date(Date.now() - 2*60*60*1000).toISOString() },
 ]
 
 export let _zones: ZoneTarifaire[] = [

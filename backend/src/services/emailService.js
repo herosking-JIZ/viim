@@ -152,7 +152,12 @@ const EmailService = {
       const roleLabel = roleLabels[data.role] || data.role;
       const parkingInfo = data.parkingName ? `\n\nParking assigné: ${data.parkingName}` : '';
 
-      const subject = `Invitation N'DJIGI - Compte ${roleLabel}`;
+      // Build activation link with token (if provided)
+      const activationLink = data.token
+        ? `${appUrl}/auth/first-connection?token=${data.token}`
+        : null;
+
+      const subject = `Activation du compte N'DJIGI - Compte ${roleLabel}`;
 
       const textContent = `
 Bienvenue sur N'DJIGI!
@@ -162,13 +167,21 @@ Bonjour ${data.prenom} ${data.nom},
 Votre compte ${roleLabel} a été créé avec succès.
 
 Email: ${email}
-Mot de passe temporaire: ${data.tempPassword}
 Rôle: ${roleLabel}${parkingInfo}
 
-Pour vous connecter:
-1. Allez sur ${appUrl}/login
-2. Entrez votre email et mot de passe temporaire
-3. Changez votre mot de passe lors de la première connexion
+═══════════════════════════════════════════════════════════════
+POUR ACTIVER VOTRE COMPTE
+═══════════════════════════════════════════════════════════════
+
+Veuillez cliquer sur le lien ci-dessous pour activer votre compte et définir votre mot de passe:
+
+${activationLink}
+
+Ce lien expire dans 24 heures.
+
+═══════════════════════════════════════════════════════════════
+
+Si vous ne pouvez pas cliquer sur le lien, copiez-collez l'adresse ci-dessus dans votre navigateur.
 
 Support: +226 06 76 98 89 (WhatsApp)
 
@@ -178,44 +191,78 @@ L'équipe N'DJIGI
 
       const htmlContent = `
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Activation - N'DJIGI</title>
   <style>
-    body { font-family: Arial, sans-serif; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background-color: #007bff; color: white; padding: 20px; text-align: center; border-radius: 5px; }
-    .content { padding: 20px; background-color: #f9f9f9; border: 1px solid #ddd; border-radius: 5px; margin-top: 20px; }
-    .credentials { background-color: #fff3cd; padding: 15px; border-radius: 5px; margin: 15px 0; font-family: monospace; }
-    .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #666; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f5f5f5; color: #333; line-height: 1.6; }
+    .container { max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .header { background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: white; padding: 40px 20px; text-align: center; }
+    .header h1 { font-size: 28px; margin-bottom: 10px; }
+    .content { padding: 30px; }
+    .section { margin-bottom: 25px; }
+    .section h2 { font-size: 16px; color: #1e3c72; margin-bottom: 12px; font-weight: 600; }
+    .info-box { background-color: #f9f9f9; border-left: 4px solid #2a5298; padding: 15px; border-radius: 4px; font-size: 14px; }
+    .info-box p { margin-bottom: 10px; }
+    .cta-button { display: inline-block; background-color: #2a5298; color: white; padding: 14px 40px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; margin: 20px 0; }
+    .cta-button:hover { background-color: #1e3c72; }
+    .expiration-notice { background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 15px 0; border-radius: 4px; font-size: 14px; color: #856404; }
+    .footer { background-color: #f5f5f5; padding: 20px 30px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #eee; }
+    @media (max-width: 600px) {
+      .container { margin: 0; border-radius: 0; }
+      .content { padding: 20px 15px; }
+      .cta-button { padding: 12px 30px; font-size: 14px; }
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h1>Bienvenue sur N'DJIGI!</h1>
+      <h1>Activation de compte</h1>
+      <p>Bienvenue sur N'DJIGI!</p>
     </div>
     <div class="content">
       <p>Bonjour <strong>${data.prenom} ${data.nom}</strong>,</p>
-      <p>Votre compte <strong>${roleLabel}</strong> a été créé avec succès.</p>
+      <p style="margin-top: 15px; margin-bottom: 20px;">Votre compte <strong>${roleLabel}</strong> a été créé avec succès. Pour l'activer et commencer à l'utiliser, veuillez cliquer sur le bouton ci-dessous.</p>
 
-      <div class="credentials">
-        <p><strong>Email:</strong> ${email}</p>
-        <p><strong>Mot de passe temporaire:</strong> ${data.tempPassword}</p>
-        <p><strong>Rôle:</strong> ${roleLabel}</p>
-        ${data.parkingName ? `<p><strong>Parking:</strong> ${data.parkingName}</p>` : ''}
+      <div class="section">
+        <h2>📋 VOS INFORMATIONS</h2>
+        <div class="info-box">
+          <p><strong>Email :</strong> ${email}</p>
+          <p><strong>Rôle :</strong> ${roleLabel}</p>
+          ${data.parkingName ? `<p><strong>Parking assigné :</strong> ${data.parkingName}</p>` : ''}
+        </div>
       </div>
 
-      <h3>Prochaines étapes:</h3>
-      <ol>
-        <li>Visitez <a href="${appUrl}/login">${appUrl}/login</a></li>
-        <li>Connectez-vous avec votre email et mot de passe temporaire</li>
-        <li>Changez votre mot de passe lors de la première connexion</li>
-      </ol>
+      <div class="section">
+        <h2>🔐 ACTIVER VOTRE COMPTE</h2>
+        <p>Cliquez sur le bouton ci-dessous pour accéder à la page d'activation :</p>
+        <center>
+          <a href="${activationLink}" class="cta-button">Activer mon compte</a>
+        </center>
+        <p style="margin-top: 15px; font-size: 14px;">Ou copiez-collez ce lien dans votre navigateur :<br><code style="background: #f5f5f5; padding: 8px; display: block; word-break: break-all; margin-top: 10px;">${activationLink}</code></p>
+      </div>
 
-      <p><strong>Support:</strong> +226 67 68 98 89 (WhatsApp)</p>
+      <div class="expiration-notice">
+        <strong>⏰ Rappel important :</strong> Ce lien d'activation expire dans 24 heures. Après cela, vous devrez demander un nouveau lien.
+      </div>
+
+      <div class="section">
+        <h2>📱 Besoin d'aide?</h2>
+        <p>Contactez-nous sur WhatsApp: <a href="https://wa.me/22606768989?text=Bonjour%20N'DJIGI" style="color: #2a5298;">+226 06 76 98 89</a></p>
+      </div>
+
+      <div style="margin-top: 30px; text-align: center; color: #555;">
+        <p><strong>À très vite sur N'DJIGI!</strong></p>
+        <p style="margin-top: 8px; font-size: 14px;">L'équipe N'DJIGI</p>
+      </div>
     </div>
+
     <div class="footer">
+      <p>Cet email a été envoyé automatiquement, merci de ne pas y répondre.</p>
       <p>© 2026 N'DJIGI. Tous droits réservés.</p>
     </div>
   </div>

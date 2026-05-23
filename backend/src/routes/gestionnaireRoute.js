@@ -12,6 +12,18 @@ const router = express.Router()
 router.use(authenticate)
 
 /**
+ * GET /gestionnaire/me/parking
+ * Récupère le parking assigné au gestionnaire authentifié
+ *
+ * Auth: Bearer token
+ * Accessible à: gestionnaires authentifiés
+ */
+router.get(
+  '/me/parking',
+  GestionnaireController.getMyParking
+)
+
+/**
  * POST /admin/gestionnaires
  * Create a new gestionnaire (admin only)
  * Rate limit: 10 creations per hour per admin

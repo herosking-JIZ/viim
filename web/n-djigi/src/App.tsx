@@ -26,7 +26,12 @@ import CreateGestionnaire from '@/pages/admin/CreateGestionnaire'
 
 // Pages gestionnaire
 import ManagerDashboard from '@/pages/manager/ManagerDashboard'
-import ParkeurDashboard from '@/pages/parkeur/ParkeurDashboard'
+
+// Pages parkeur
+import ParkeurHome from '@/pages/parkeur/ParkeurHome'
+import ParkeurFlux from '@/pages/parkeur/ParkeurFlux'
+import ParkeurMaintenance from '@/pages/parkeur/ParkeurMaintenance'
+import ParkeurVehicules from '@/pages/parkeur/ParkeurVehicules'
 
 // Page partagée
 import ChangePassword from '@/pages/auth/ChangePassword'
@@ -107,7 +112,7 @@ function AppRoutes() {
             ) : isManager ? (
               <ManagerDashboard />
             ) : (
-              <ParkeurDashboard />
+              <ParkeurHome />
             )
           }
         />
@@ -123,6 +128,24 @@ function AppRoutes() {
               <ManagerDashboard />
             </ProtectedRoute>
           }
+        />
+
+        {/* Routes parkeur */}
+        <Route
+          path="parkeur"
+          element={<ProtectedRoute><ParkeurHome /></ProtectedRoute>}
+        />
+        <Route
+          path="parkeur/flux"
+          element={<ProtectedRoute><ParkeurFlux /></ProtectedRoute>}
+        />
+        <Route
+          path="parkeur/maintenance"
+          element={<ProtectedRoute><ParkeurMaintenance /></ProtectedRoute>}
+        />
+        <Route
+          path="parkeur/vehicules"
+          element={<ProtectedRoute><ParkeurVehicules /></ProtectedRoute>}
         />
 
         {/* Routes admin */}

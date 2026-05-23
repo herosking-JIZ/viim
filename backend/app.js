@@ -34,7 +34,7 @@ app.use(cors());
 
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limite chaque IP à 100 requêtes
+    max: 1000, // limite chaque IP à 1000 requêtes
     message: {
         success: false,
         message: "Trop de requêtes, réessayez plus tard."

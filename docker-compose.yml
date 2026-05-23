@@ -71,7 +71,7 @@ services:
       JWT_REFRESH_EXPIRES_IN: 7d
 
       # CORS
-      CORS_ORIGIN: http://localhost:3000,http://localhost:8081,http://web:3000
+      CORS_ORIGIN: http://localhost:3000,http://localhost:8081,http://web:3000,http://10.3.3.49:3000
 
       # Redis (Phase 0+)
       REDIS_URL: redis://redis:6379
@@ -98,8 +98,8 @@ services:
       context: ./web/n-djigi
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: http://192.168.1.76:8000/api/v1
-        VITE_KEYCLOAK_URL: http://192.168.1.76:8080
+        VITE_API_URL: http://10.3.3.49:8000/api/v1
+        VITE_KEYCLOAK_URL: http://10.3.3.49:8080
         VITE_KEYCLOAK_REALM: ndjigi
         VITE_KEYCLOAK_CLIENT_ID: ndjigi-web
     container_name: ndjigi-web

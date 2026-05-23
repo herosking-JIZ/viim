@@ -141,6 +141,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(STORAGE_KEY_AUTH_METHOD, 'keycloak')
 
     setUser(authUser)
+
+    // ✅ Charger les infos parking si gestionnaire
+    if (authUser.roles.includes('gestionnaire')) {
+      setTimeout(() => loadGestionnaireParking(access_token), 100)
+    }
+  }, [])
+
+  // ─── Charger le parking du gestionnaire ─────────────────────
+  const loadGestionnaireParking = useCallback(async (accessToken?: string) => {
+    try {
+      const token = accessToken || localStorage.getItem(STORAGE_KEY_ACCESS)
+      if (!token) return
+
+      const res = await axios.get('/api/v1/gestionnaire/me/parking', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+
+      if (res.data.success && res.data.data) {
+        // Mettre à jour l'user avec les infos parking
+        setUser(prevUser => {
+          if (!prevUser) return null
+          const updatedUser = {
+            ...prevUser,
+            parking_id: res.data.data.id_parking,
+            parking_nom: res.data.data.nom,
+            parking_adresse: res.data.data.adresse
+          }
+          // Sauvegarder le user complet dans localStorage
+          localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updatedUser))
+          return updatedUser
+        })
+      }
+    } catch (error: any) {
+      console.warn('⚠️ Erreur chargement parking gestionnaire:', error?.response?.data?.message || error?.message)
+      // Ne pas bloquer le login si cette API échoue
+    }
   }, [])
 
   // ─── Resend SMS ────────────────────────────────────────────
