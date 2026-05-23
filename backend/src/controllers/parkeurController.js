@@ -140,8 +140,15 @@ const ParkeurController = {
 
       return res.status(200).json({
         success: true,
-        data,
-        meta: { total, page: parseInt(page), limit: parseInt(limit) }
+        message: 'Opération réussie',
+        data: {
+          data,
+          total,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: Math.ceil(total / parseInt(limit))
+        },
+        errors: null
       });
     } catch (error) {
       console.error('[parkeur.mouvementsParkeur]', error);
