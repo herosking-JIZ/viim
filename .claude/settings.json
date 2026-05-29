@@ -29,7 +29,13 @@
       "PowerShell(Get-ChildItem \"C:\\\\Users\\\\Kader SAWADOGO\\\\Desktop\\\\ndjigiv1\\\\web\" -Recurse -Depth 3 | Where-Object {$_.PSIsContainer} | Select-Object -ExpandProperty FullName | head -30)",
       "PowerShell(docker-compose exec -T ndjigi-backend sh -c \"cd /app && npx prisma migrate deploy\" 2>&1)",
       "PowerShell(tail -30)",
-      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\Kader SAWADOGO\\\\Desktop\\\\ndjigiv1\\\\mobile\\\\lib\\\\screens\" -Recurse | Select-Object FullName, @{Name=\"Type\";Expression={if\\($_.PSIsContainer\\){\"Dossier\"}else{\"Fichier\"}}} | Format-Table -AutoSize)"
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\Kader SAWADOGO\\\\Desktop\\\\ndjigiv1\\\\mobile\\\\lib\\\\screens\" -Recurse | Select-Object FullName, @{Name=\"Type\";Expression={if\\($_.PSIsContainer\\){\"Dossier\"}else{\"Fichier\"}}} | Format-Table -AutoSize)",
+      "Bash(flutter create *)",
+      "Bash(flutter pub *)",
+      "Bash(ls -la /c/PubCache/hosted/pub.dev/ 2>/dev/null | grep latlong)",
+      "Read(//c/PubCache/hosted/pub.dev//**)",
+      "Bash(cd /c/projet/ndjigiv1/ndjigi_passager && grep -n \"withOpacity\" lib/core/theme/app_theme.dart lib/features/home/presentation/screens/home_screen.dart lib/features/booking/presentation/screens/booking_confirm_screen.dart lib/features/tracking/presentation/screens/tracking_screen.dart)",
+      "Read(//c/c/projet/ndjigiv1/ndjigi_passager/lib/core/theme/**)"
     ]
   }
 }

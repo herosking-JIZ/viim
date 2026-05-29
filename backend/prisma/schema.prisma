@@ -9,7 +9,31 @@ datasource db {
   provider = "postgresql"
 }
 
-enum statut_validation {
+enum NomCategorie {
+  Economique
+  Confort
+  Premium
+}
+
+enum typeDocument {
+  photos
+  documents_administratifs
+}
+
+enum TypeService {
+  covoiturage
+  course_plein_temps
+}
+
+enum StatutVehicule {
+  disponible
+  en_course
+  en_location
+  maintenance
+  retire
+}
+
+enum statutvalidation {
   en_attente
   valide
   refuse
@@ -57,11 +81,21 @@ enum ProvisioningIncidentStatus {
   manual_intervention_required
 }
 
+enum StatutPortefeuille {
+  actif
+  bloque
+}
+
 // ─── ENUMS PARKEUR ─────────────────────────────────────────
 enum type_maintenance {
   mecanique
   electricite
   carrosserie
+}
+
+enum type_reduction {
+  fixe
+  pourcentage
 }
 
 enum maintenance_statut {
@@ -78,17 +112,16 @@ enum maintenance_urgence {
   haute
 }
 
-model affectation_vehicule {
-  id_affectation String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  id_vehicule    String    @unique(map: "idx_vehicule_chauffeur_actif", where: raw("(est_active = true)")) @db.Uuid
-  id_chauffeur   String    @db.Uuid
-  date_debut     DateTime  @default(now()) @db.Timestamp(6)
-  date_fin       DateTime? @db.Timestamp(6)
-  est_active     Boolean   @default(true)
-  motif_fin      String?   @db.VarChar(50)
-  chauffeur      chauffeur @relation(fields: [id_chauffeur], references: [id_chauffeur], onDelete: NoAction, onUpdate: NoAction)
-  vehicule       vehicule  @relation(fields: [id_vehicule], references: [id_vehicule], onDelete: NoAction, onUpdate: NoAction)
-  trajet         trajet[]
+enum statut_compte {
+  actif
+  inactif
+  suspendu
+}
+
+enum StatutDisponibilite {
+  en_ligne
+  hors_ligne
+  en_course
 }
 
 model avis {
@@ -96,19 +129,24 @@ model avis {
   id_evaluateur                               String      @db.Uuid
   id_evalue                                   String      @db.Uuid
   id_trajet                                   String?     @db.Uuid
+  id_location                                 String?     @db.Uuid
   note                                        Int?        @db.SmallInt
   commentaire                                 String?
   date_avis                                   DateTime?   @default(now()) @db.Timestamp(6)
   utilisateur_avis_id_evaluateurToutilisateur utilisateur @relation("avis_id_evaluateurToutilisateur", fields: [id_evaluateur], references: [id_utilisateur], onDelete: NoAction, onUpdate: NoAction)
   utilisateur_avis_id_evalueToutilisateur     utilisateur @relation("avis_id_evalueToutilisateur", fields: [id_evalue], references: [id_utilisateur], onDelete: NoAction, onUpdate: NoAction)
   trajet                                      trajet?     @relation(fields: [id_trajet], references: [id_trajet], onDelete: NoAction, onUpdate: NoAction)
+  location                                    location?   @relation(fields: [id_location], references: [id_location], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([id_evaluateur], map: "idx_avis_evaluateur")
+  @@index([id_evalue], map: "idx_avis_evalue")
 }
 
 model chauffeur {
   id_chauffeur             String                 @id @db.Uuid
-  statut_validation        String                 @default("en_attente") @db.VarChar(20)
-  type_service             String                 @db.VarChar(20)
-  statut_disponibilite     String                 @default("hors_ligne") @db.VarChar(20)
+  statut_validation        statutvalidation       @default(en_attente)
+  type_service             TypeService
+  statut_disponibilite     StatutDisponibilite    @default(hors_ligne)
   note_chauffeur           Decimal?               @db.Decimal(3, 2)
   nb_courses_effectuees    Int                    @default(0)
   /// Solde des commissions dues à la plateforme
@@ -121,39 +159,40 @@ model chauffeur {
 }
 
 model code_promo {
-  id_promo               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  code                   String              @unique @db.VarChar(30)
+  id_promo            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                String         @unique @db.VarChar(30)
   /// "fixe" ou "pourcentage". Si "pourcentage", valeur doit être ≤ 100 (validé en application)
-  type_reduction         String              @db.VarChar(20)
-  valeur                 Decimal             @db.Decimal(8, 2)
-  date_debut             DateTime            @db.Timestamp(6)
-  date_fin               DateTime?           @db.Timestamp(6)
-  nb_utilisations_max    Int?
-  /// Toujours incrémenter via prisma.code_promo.update({ data: { nb_utilisations_actuel: { increment: 1 } } })
+  type_reduction      type_reduction
+  valeur              Decimal        @db.Decimal(8, 2)
+  date_debut          DateTime       @db.Timestamp(6)
+  date_fin            DateTime?      @db.Timestamp(6)
+  nb_utilisations_max Int?
+
   nb_utilisations_actuel Int                 @default(0)
   actif                  Boolean             @default(true)
   utilisation_promo      utilisation_promo[]
 }
 
 model document {
-  id_document         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  id_utilisateur      String      @db.Uuid
-  type                String      @db.VarChar(40)
+  id_document         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_utilisateur      String        @db.Uuid
+  type                String        @db.VarChar(40)
   url_fichier         String
-  title               String?     @db.VarChar(200)
-  fileKey             String?     @unique // YYYY-MM/{userId}/{uuid}{ext}
-  mimeType            String?     @db.VarChar(100)
+  title               String?       @db.VarChar(200)
+  fileKey             String?       @unique // YYYY-MM/{userId}/{uuid}{ext}
+  mimeType            String?       @db.VarChar(100)
   fileSize            BigInt? // File size in bytes
-  storageHash         String?     @db.VarChar(64) // SHA256 hash (hex)
-  status              String?     @default("READY") @db.VarChar(20) // PENDING|READY|FAILED
+  storageHash         String?       @db.VarChar(64) // SHA256 hash (hex)
+  status              String?       @default("READY") @db.VarChar(20) // PENDING|READY|FAILED
   motif_rejet         String?
-  statut_verification String      @default("en_attente") @db.VarChar(20)
-  date_soumission     DateTime    @default(now()) @db.Timestamp(6)
-  date_expiration     DateTime?   @db.Date
-  createdAt           DateTime    @default(now()) @db.Timestamp(6)
-  updatedAt           DateTime    @updatedAt @db.Timestamp(6)
-  deletedAt           DateTime?   @db.Timestamp(6) // Soft delete
-  utilisateur         utilisateur @relation(fields: [id_utilisateur], references: [id_utilisateur], onDelete: NoAction, onUpdate: NoAction)
+  statut_verification String        @default("en_attente") @db.VarChar(20)
+  date_soumission     DateTime      @default(now()) @db.Timestamp(6)
+  date_expiration     DateTime?     @db.Date
+  createdAt           DateTime      @default(now()) @db.Timestamp(6)
+  updatedAt           DateTime      @updatedAt @db.Timestamp(6)
+  deletedAt           DateTime?     @db.Timestamp(6) // Soft delete
+  type_document       typeDocument?
+  utilisateur         utilisateur   @relation(fields: [id_utilisateur], references: [id_utilisateur], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([id_utilisateur, deletedAt], map: "idx_document_userid_deletedat")
   @@index([storageHash, id_utilisateur], map: "idx_document_hash_userid")
@@ -173,12 +212,14 @@ model gestionnaire_parking {
 model incident_securite {
   id_incident        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   id_trajet          String?     @db.Uuid
+  id_location        String?     @db.Uuid
   id_declencheur     String      @db.Uuid
   type_incident      String      @db.VarChar(30)
   description        String?
   date_declenchement DateTime    @default(now()) @db.Timestamp(6)
   utilisateur        utilisateur @relation(fields: [id_declencheur], references: [id_utilisateur], onDelete: NoAction, onUpdate: NoAction)
   trajet             trajet?     @relation(fields: [id_trajet], references: [id_trajet], onDelete: NoAction, onUpdate: NoAction)
+  location           location?   @relation(fields: [id_location], references: [id_location], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model mouvement_photo {
@@ -256,15 +297,18 @@ model maintenance_step {
 }
 
 model location {
-  id_location   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  id_vehicule   String   @db.Uuid
-  id_passager   String   @db.Uuid
-  date_debut    DateTime @db.Timestamp(6)
-  date_fin      DateTime @db.Timestamp(6)
-  montant_total Decimal  @db.Decimal(12, 2)
-  statut        String   @default("en_attente") @db.VarChar(20)
-  passager      passager @relation(fields: [id_passager], references: [id_passager], onDelete: NoAction, onUpdate: NoAction)
-  vehicule      vehicule @relation(fields: [id_vehicule], references: [id_vehicule], onDelete: NoAction, onUpdate: NoAction)
+  id_location       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_vehicule       String              @db.Uuid
+  id_passager       String              @db.Uuid
+  date_debut        DateTime            @db.Timestamp(6)
+  date_fin          DateTime            @db.Timestamp(6)
+  montant_total     Decimal             @db.Decimal(12, 2)
+  statut            String              @default("en_attente") @db.VarChar(20)
+  conversation      conversation?
+  passager          passager            @relation(fields: [id_passager], references: [id_passager], onDelete: NoAction, onUpdate: NoAction)
+  vehicule          vehicule_location   @relation(fields: [id_vehicule], references: [id_vehicule], onDelete: NoAction, onUpdate: NoAction)
+  avis              avis[]
+  incident_securite incident_securite[]
 }
 
 model mouvement_portefeuille {
@@ -349,17 +393,17 @@ model portefeuille {
   solde                  Decimal                  @default(0.00) @db.Decimal(12, 2)
   dette_commission       Decimal                  @default(0.00) @db.Decimal(12, 2)
   devise                 String                   @default("XOF") @db.Char(3)
-  statut                 String                   @default("actif") @db.VarChar(20)
+  statut                 StatutPortefeuille       @default(actif)
   mouvement_portefeuille mouvement_portefeuille[]
   utilisateur            utilisateur              @relation(fields: [id_utilisateur], references: [id_utilisateur], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model proprietaire {
-  id_proprietaire         String      @id @db.Uuid
-  statut_validation       String      @default("en_attente") @db.VarChar(20)
-  note_proprietaire       Decimal?    @db.Decimal(3, 2)
-  nb_locations_effectuees Int         @default(0)
-  utilisateur             utilisateur @relation(fields: [id_proprietaire], references: [id_utilisateur], onDelete: Cascade, onUpdate: NoAction)
+  id_proprietaire         String           @id @db.Uuid
+  statut_validation       statutvalidation @default(en_attente)
+  note_proprietaire       Decimal?         @db.Decimal(3, 2)
+  nb_locations_effectuees Int              @default(0)
+  utilisateur             utilisateur      @relation(fields: [id_proprietaire], references: [id_utilisateur], onDelete: Cascade, onUpdate: NoAction)
   vehicule                vehicule[]
 }
 
@@ -405,6 +449,7 @@ model trajet {
   coordonnees_arrivee  Json?
   coordonnees_depart   Json?
   polyline_trajet      String?
+  conversation         conversation?
   avis                 avis[]
   incident_securite    incident_securite[]
   reservation          reservation[]
@@ -434,7 +479,7 @@ model utilisateur {
   tentatives_connexion                 Int                      @default(0)
   bloque_jusqu_au                      DateTime?
   date_inscription                     DateTime                 @default(now()) @db.Timestamp(6)
-  statut_compte                        String                   @default("actif") @db.VarChar(20)
+  statut_compte                        statut_compte            @default(actif)
   note_moyenne                         Decimal?                 @db.Decimal(3, 2)
   /// Soft delete : null = actif, date = supprimé le
   supprime_le                          DateTime?
@@ -474,7 +519,6 @@ model utilisateur {
   proprietaire                         proprietaire?
   utilisateur_role                     utilisateur_role[]
   utilisation_promo                    utilisation_promo[]
-  moyens_paiement                      moyens_paiement[]
   provisioning_incidents               provisioning_incidents[]
   journal_parking                      journal_parking[]
   maintenance_requests                 maintenance[]
@@ -520,36 +564,73 @@ model utilisation_promo {
   @@index([id_trajet], map: "idx_utilisation_promo_trajet")
 }
 
+// ── SUPERTYPE
 model vehicule {
-  id_vehicule          String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  id_proprietaire      String                @db.Uuid
-  id_parking           String?               @db.Uuid
-  immatriculation      String                @unique @db.VarChar(20)
-  marque               String                @db.VarChar(60)
-  modele               String                @db.VarChar(60)
-  annee                Int                   @db.SmallInt
-  nb_places            Int                   @db.SmallInt
-  couleur              String?               @db.VarChar(30)
-  statut               String                @default("disponible") @db.VarChar(20)
-  /// Soft delete : null = actif, date = retiré de la flotte le
-  supprime_le          DateTime?
-  climatisation        Boolean               @default(false)
-  gps_actif            Boolean               @default(false)
-  latitude_actuelle    Decimal?              @db.Decimal(10, 7)
-  longitude_actuelle   Decimal?              @db.Decimal(10, 7)
-  photos               Json?
-  affectation_vehicule affectation_vehicule?
+  id_vehicule             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_proprietaire         String         @db.Uuid
+  id_parking              String?        @db.Uuid
+  id_categorie            String         @db.Uuid
+  immatriculation         String         @unique @db.VarChar(20)
+  marque                  String         @db.VarChar(60)
+  modele                  String         @db.VarChar(60)
+  annee                   Int            @db.SmallInt
+  nb_places               Int            @db.SmallInt
+  couleur                 String?        @db.VarChar(30)
+  statut                  StatutVehicule @default(disponible)
+  supprime_le             DateTime?
+  climatisation           Boolean        @default(false)
+  gps_actif               Boolean        @default(false)
+  latitude_actuelle       Decimal?       @db.Decimal(10, 7)
+  longitude_actuelle      Decimal?       @db.Decimal(10, 7)
+  tarif_base_location     Decimal?       @db.Decimal(10, 2)
+  tarif_par_jour_location Decimal?       @db.Decimal(10, 2)
+  fonds_genere            Decimal?       @db.Decimal(12, 2) // Total funds generated by this vehicle (for ranking propriétaires)
+
+  // relations communes aux deux sous-types
+  proprietaire         proprietaire        @relation(fields: [id_proprietaire], references: [id_proprietaire])
+  categorie_vehicule   categorie_vehicule  @relation(fields: [id_categorie], references: [id_categorie])
+  parking              parking?            @relation(fields: [id_parking], references: [id_parking])
   journal_parking      journal_parking[]
-  location             location[]
   tracking_vehicule    tracking_vehicule[]
-  proprietaire         proprietaire          @relation(fields: [id_proprietaire], references: [id_proprietaire], onDelete: NoAction, onUpdate: NoAction)
-  id_categorie         String                @db.Uuid
-  categorie_vehicule   categorie_vehicule    @relation(fields: [id_categorie], references: [id_categorie], onDelete: NoAction, onUpdate: NoAction)
-  parking              parking?              @relation(fields: [id_parking], references: [id_parking], onDelete: NoAction, onUpdate: NoAction)
   maintenance_requests maintenance[]
+
+  // sous-types
+  vehicule_course   vehicule_course? // ← spécialisation course
+  vehicule_location vehicule_location? // ← spécialisation location
 
   @@index([id_categorie], map: "idx_vehicule_categorie")
   @@index([id_proprietaire], map: "idx_vehicule_proprietaire")
+}
+
+// ── SOUS-TYPE 1 : Course ─────────────────────────────────
+model vehicule_course {
+  id_vehicule  String @id @db.Uuid // PK partagée, pas de gen_random_uuid()
+  type_service String @db.VarChar(20) // "standard", "premium"...
+
+  vehicule             vehicule              @relation(fields: [id_vehicule], references: [id_vehicule], onDelete: Cascade)
+  affectation_vehicule affectation_vehicule?
+}
+
+// ── SOUS-TYPE 2 : Location ────────────────────────────────
+model vehicule_location {
+  id_vehicule String @id @db.Uuid
+
+  vehicule vehicule   @relation(fields: [id_vehicule], references: [id_vehicule], onDelete: Cascade)
+  location location[]
+}
+
+model affectation_vehicule {
+  id_affectation String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_vehicule    String    @unique(where: raw("(est_active = true)")) @db.Uuid
+  id_chauffeur   String    @db.Uuid
+  date_debut     DateTime  @default(now()) @db.Timestamp(6)
+  date_fin       DateTime? @db.Timestamp(6)
+  est_active     Boolean   @default(true)
+  motif_fin      String?   @db.VarChar(50)
+
+  vehicule_course vehicule_course @relation(fields: [id_vehicule], references: [id_vehicule], onDelete: NoAction) // ← corrigé
+  chauffeur       chauffeur       @relation(fields: [id_chauffeur], references: [id_chauffeur], onDelete: NoAction)
+  trajet          trajet[]
 }
 
 model zone_tarifaire {
@@ -564,11 +645,10 @@ model zone_tarifaire {
 }
 
 model categorie_vehicule {
-  id_categorie String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nom          String  @unique @db.VarChar(60)
-  /// Ex: "Économique", "Confort", "SUV", "Premium", "Luxe"
+  id_categorie String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nom          NomCategorie
   description  String?
-  actif        Boolean @default(true)
+  actif        Boolean      @default(true)
 
   vehicule             vehicule[]
   tarif_categorie_zone tarif_categorie_zone[]
@@ -606,22 +686,23 @@ model detail_trajet_passager {
 }
 
 model ticket {
-  id_ticket              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  id_utilisateur         String    @db.Uuid
-  sujet                  String    @db.VarChar(255)
+  id_ticket              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_utilisateur         String        @db.Uuid
+  sujet                  String        @db.VarChar(255)
   description            String
-  statut                 String    @default("ouvert") @db.VarChar(20)
-  priorite               String    @default("normale") @db.VarChar(20)
-  eligible_remboursement Boolean   @default(false)
+  statut                 String        @default("ouvert") @db.VarChar(20)
+  priorite               String        @default("normale") @db.VarChar(20)
+  eligible_remboursement Boolean       @default(false)
   /// Ticket lié à un trajet spécifique
-  id_trajet              String?   @db.Uuid
+  id_trajet              String?       @db.Uuid
   /// Ticket lié à un paiement spécifique
-  id_paiement            String?   @db.Uuid
+  id_paiement            String?       @db.Uuid
   /// Agent support assigné au ticket
-  id_agent               String?   @db.Uuid
+  id_agent               String?       @db.Uuid
   note_interne           String?
-  date_creation          DateTime  @default(now()) @db.Timestamp(6)
-  date_resolution        DateTime? @db.Timestamp(6)
+  date_creation          DateTime      @default(now()) @db.Timestamp(6)
+  date_resolution        DateTime?     @db.Timestamp(6)
+  conersation            conversation?
 
   utilisateur   utilisateur     @relation(fields: [id_utilisateur], references: [id_utilisateur], onDelete: NoAction, onUpdate: NoAction)
   trajet        trajet?         @relation(fields: [id_trajet], references: [id_trajet], onDelete: NoAction, onUpdate: NoAction)
@@ -671,17 +752,13 @@ model auth_log {
 
 model moyens_paiement {
   id_moyen_paiement  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  id_utilisateur     String            @db.Uuid
   type               TypeMoyenPaiement
   details            Json
   actif              Boolean           @default(true)
   date_ajout         DateTime          @default(now()) @db.Timestamp(6)
   date_desactivation DateTime?         @db.Timestamp(6)
 
-  utilisateur utilisateur @relation(fields: [id_utilisateur], references: [id_utilisateur], onDelete: NoAction, onUpdate: NoAction)
-  paiements   paiement[] // ✅ liste virtuelle (pas de colonne SQL)
-
-  @@index([id_utilisateur], map: "idx_moyens_paiement_utilisateur")
+  paiements paiement[] // ✅ liste virtuelle (pas de colonne SQL)
 }
 
 model provisioning_incidents {
@@ -703,4 +780,48 @@ model provisioning_incidents {
   @@index([type], map: "idx_provisioning_incidents_type")
   @@index([status], map: "idx_provisioning_incidents_status")
   @@index([created_at], map: "idx_provisioning_incidents_created_at")
+}
+
+model conversation {
+  id_conversation String   @id @default(uuid()) @db.Uuid
+  id_trajet       String?  @unique @db.Uuid
+  id_location     String?  @unique @db.Uuid
+  id_ticket       String?  @unique @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamp(6)
+
+  trajet       trajet?                    @relation(fields: [id_trajet], references: [id_trajet], onDelete: Cascade)
+  location     location?                  @relation(fields: [id_location], references: [id_location], onDelete: Cascade)
+  ticket       ticket?                    @relation(fields: [id_ticket], references: [id_ticket], onDelete: Cascade)
+  participants conversation_participant[]
+  messages     message[]
+
+  @@index([id_trajet])
+  @@index([id_location])
+  @@index([id_ticket])
+}
+
+model conversation_participant {
+  id_conversation String @db.Uuid
+  id_utilisateur  String @db.Uuid
+
+  conversation conversation @relation(fields: [id_conversation], references: [id_conversation], onDelete: Cascade)
+
+  @@id([id_conversation, id_utilisateur])
+  @@index([id_utilisateur])
+}
+
+model message {
+  id_message      String    @id @default(uuid()) @db.Uuid
+  id_conversation String    @db.Uuid
+  id_expediteur   String    @db.Uuid
+  nom_expediteur  String    @db.VarChar(100)
+  contenu         String
+  lu              Boolean   @default(false)
+  date_envoi      DateTime  @default(now()) @db.Timestamp(6)
+  date_lecture    DateTime? @db.Timestamp(6)
+
+  conversation conversation @relation(fields: [id_conversation], references: [id_conversation], onDelete: Cascade)
+
+  @@index([id_conversation])
+  @@index([id_expediteur])
 }
