@@ -41,6 +41,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - ./docker/keycloak/themes:/opt/keycloak/themes
     networks:
       - ndjigi-network
     command:

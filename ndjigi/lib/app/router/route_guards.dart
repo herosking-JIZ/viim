@@ -18,7 +18,6 @@ class RouteGuards {
 
   /// Check if user has required role
   Future<bool> hasRole(UtilisateurRole requiredRole) async {
-    // TODO: Implement role checking from auth provider
     // For now, return true for development
     return true;
   }
@@ -58,7 +57,11 @@ Future<String?> authRedirect(BuildContext context, GoRouterState state) async {
   return null;
 }
 
-Future<String?> roleRedirect(BuildContext context, GoRouterState state, UtilisateurRole role) async {
+Future<String?> roleRedirect(
+  BuildContext context,
+  GoRouterState state,
+  UtilisateurRole role,
+) async {
   // TODO: Implement role checking
   return null;
 }

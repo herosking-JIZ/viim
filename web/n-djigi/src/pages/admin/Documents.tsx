@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { CheckCircle, XCircle } from 'lucide-react'
+import { CheckCircle, XCircle, Eye } from 'lucide-react'
 import { documentsService } from '@/services/api'
 import { StatusBadge } from '@/components/StatusBadge'
 import { useToast } from '@/hooks/useToast'
@@ -62,6 +62,29 @@ export default function Documents() {
     }
   }
 
+  const handleVoir = async (doc: Document) => {
+    try {
+      // Import axios pour récupérer le fichier avec authentification
+      const api = (await import('@/services/api')).default
+
+      // Requête GET avec token Bearer automatique
+      const response = await api.get(
+        `/documents/${doc.id_document}/fichier?inline=true`,
+        { responseType: 'blob' }
+      )
+
+      // Créer une Blob URL et l'ouvrir dans un nouvel onglet
+      const blob = response.data
+      const blobUrl = URL.createObjectURL(blob)
+      window.open(blobUrl, '_blank')
+
+      // Nettoyer après un certain délai (le navigateur a eu le temps de charger)
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000)
+    } catch {
+      toast({ title: 'Erreur', description: 'Impossible d\'ouvrir le document', variant: 'destructive' })
+    }
+  }
+
   const DocumentTable = ({ docs, withActions }: { docs: Document[]; withActions?: boolean }) => (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -93,6 +116,13 @@ export default function Documents() {
                 {withActions && (
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => handleVoir(doc)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-xs font-medium"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        Voir
+                      </button>
                       <button
                         onClick={() => handleValider(doc)}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-success/10 text-success hover:bg-success/20 transition-colors text-xs font-medium"

@@ -7,6 +7,7 @@ import '../storage/secure_storage.dart';
 import '../services/location_service.dart';
 import '../services/map_service.dart';
 import '../services/notification_service.dart';
+import '../services/auth_keycloak_service.dart';
 
 /// Provides the app configuration
 final appConfigProvider = Provider<AppConfig>((ref) {
@@ -49,4 +50,16 @@ final mapServiceProvider = Provider<MapService>((ref) {
 /// Provides NotificationService instance
 final notificationServiceProvider = Provider<NotificationService>((ref) {
   return NotificationService();
+});
+
+/// Provides KeycloakAuthService instance
+final keycloakAuthServiceProvider = Provider<KeycloakAuthService>((ref) {
+  final config = ref.watch(appConfigProvider);
+  final storage = ref.watch(secureStorageProvider);
+  final apiService = ref.watch(apiServiceProvider);
+  return KeycloakAuthService(
+    config: config,
+    storage: storage,
+    dio: apiService.dio,
+  );
 });

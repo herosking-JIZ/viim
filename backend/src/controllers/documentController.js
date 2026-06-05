@@ -370,6 +370,7 @@ const documentController = {
   async serveFile(req, res) {
     try {
       const { id } = req.params;
+      const { inline } = req.query;
       const userId = req.user.id_utilisateur;
 
       // Parse id as UUID, return 400 if invalid
@@ -435,10 +436,17 @@ const documentController = {
         });
       }
 
+      // Determine Content-Disposition based on ?inline parameter
+      const shouldDisplayInline = inline === 'true';
+      const dispositionValue = shouldDisplayInline
+        ? `inline; filename="${encodeURIComponent(document.title || 'document')}"`
+        : `attachment; filename="${encodeURIComponent(document.title || 'document')}"`;
+
       // Set response headers
       res.setHeader('Content-Type', document.mimeType || 'application/octet-stream');
-      res.setHeader('Content-Length', document.fileSize || 0);
-      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(document.title || 'document')}"`);
+      // Convert BigInt to string for Content-Length header
+      res.setHeader('Content-Length', (document.fileSize || 0n).toString());
+      res.setHeader('Content-Disposition', dispositionValue);
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('Content-Security-Policy', "default-src 'none'");
 

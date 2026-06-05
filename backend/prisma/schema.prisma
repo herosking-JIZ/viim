@@ -154,6 +154,7 @@ model chauffeur {
   date_derniere_suspension DateTime?              @db.Date
   date_expiration_permis   DateTime?              @db.Date
   numero_permis            String?                @db.VarChar(30)
+  vehicule_course          vehicule_course[]
   affectation_vehicule     affectation_vehicule[]
   utilisateur              utilisateur            @relation(fields: [id_chauffeur], references: [id_utilisateur], onDelete: Cascade, onUpdate: NoAction)
 }
@@ -606,7 +607,9 @@ model vehicule {
 model vehicule_course {
   id_vehicule  String @id @db.Uuid // PK partagée, pas de gen_random_uuid()
   type_service String @db.VarChar(20) // "standard", "premium"...
+  id_chauffeur String @db.Uuid
 
+  chauffeur       chauffeur       @relation(fields: [id_chauffeur], references: [id_chauffeur], onDelete: NoAction)
   vehicule             vehicule              @relation(fields: [id_vehicule], references: [id_vehicule], onDelete: Cascade)
   affectation_vehicule affectation_vehicule?
 }
@@ -702,7 +705,7 @@ model ticket {
   note_interne           String?
   date_creation          DateTime      @default(now()) @db.Timestamp(6)
   date_resolution        DateTime?     @db.Timestamp(6)
-  conersation            conversation?
+  conversation            conversation?
 
   utilisateur   utilisateur     @relation(fields: [id_utilisateur], references: [id_utilisateur], onDelete: NoAction, onUpdate: NoAction)
   trajet        trajet?         @relation(fields: [id_trajet], references: [id_trajet], onDelete: NoAction, onUpdate: NoAction)

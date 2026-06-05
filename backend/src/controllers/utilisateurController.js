@@ -784,6 +784,76 @@ const UtilisateurController = {
       });
     }
   },
+
+  // ──────────────────────────────────────────────────────────
+  // POST /api/v1/users/sync
+  // Synchronise les données utilisateur après Keycloak
+  // Transforme utilisateur_role en roles pour Flutter
+  // Auth: Bearer token requis
+  // ──────────────────────────────────────────────────────────
+  async syncUser(req, res) {
+    try {
+      const userId = req.user.id_utilisateur;
+
+      const utilisateur = await prisma.utilisateur.findUnique({
+        where: { id_utilisateur: userId },
+        select: {
+          id_utilisateur: true,
+          email: true,
+          nom: true,
+          prenom: true,
+          numero_telephone: true,
+          statut_compte: true,
+          deux_fa_activee: true,
+          supprime_le: true,
+          utilisateur_role: { where: { actif: true }, select: { role: true } },
+        }
+      });
+
+      if (!utilisateur || utilisateur.supprime_le) {
+        return res.status(404).json({
+          success: false,
+          message: 'Utilisateur introuvable.',
+          data: null,
+          errors: { code: 'USER_NOT_FOUND' }
+        });
+      }
+
+      // Transformer utilisateur_role en roles (array de strings)
+      const roles = utilisateur.utilisateur_role.map(ur => ur.role);
+
+      // Si pas de rôle, assigner passager par défaut
+      if (roles.length === 0) {
+        roles.push('passager');
+      }
+
+      const data = {
+        id_utilisateur: utilisateur.id_utilisateur,
+        email: utilisateur.email,
+        nom: utilisateur.nom,
+        prenom: utilisateur.prenom,
+        numero_telephone: utilisateur.numero_telephone,
+        statut_compte: utilisateur.statut_compte,
+        deux_fa_activee: utilisateur.deux_fa_activee,
+        roles: roles,
+      };
+
+      return res.status(200).json({
+        success: true,
+        message: 'Synchronisation réussie.',
+        data: data,
+        errors: null
+      });
+    } catch (error) {
+      console.error('[utilisateur.syncUser]', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur serveur.',
+        data: null,
+        errors: error.message
+      });
+    }
+  },
 };
 
 module.exports = UtilisateurController;

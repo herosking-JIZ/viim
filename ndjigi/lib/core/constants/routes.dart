@@ -12,6 +12,8 @@ class Routes {
   static const String documentUpload = '/document-upload';
   static const String validationAttente = '/validation-attente';
   static const String compteSuspendu = '/compte-suspendu';
+  static const String keycloakCallback = '/auth/keycloak-callback';
+  static const String phoneCollection = '/phone-collection';
 
   // Main routes
   static const String home = '/home';

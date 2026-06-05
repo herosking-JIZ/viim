@@ -13,6 +13,9 @@ utilisateurRoute.use(authenticate);
 
 // ── Profil connecté ──────────────────────────────────────────
 
+// POST /utilisateur/sync — synchronise les données après Keycloak
+utilisateurRoute.post  ('/sync',                      can('profil:lire'),       UtilisateurController.syncUser);
+
 // GET /utilisateur/profil — voir son profil
 utilisateurRoute.get   ('/profil',                    can('profil:lire'),       UtilisateurController.monProfil);
 

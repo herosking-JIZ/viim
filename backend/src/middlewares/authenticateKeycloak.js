@@ -79,33 +79,66 @@ const authenticateKeycloak = async (req, res, next) => {
         }
       });
 
-      // Si l'utilisateur n'existe pas, le créer
+      // Si l'utilisateur n'existe pas par keycloak_id, chercher par email
       if (!user) {
-        console.log(`✅ Création d'un nouvel utilisateur depuis Keycloak: ${payload.email}`);
-
-        user = await prisma.utilisateur.create({
-          data: {
-            keycloak_id: payload.sub,
-            email: payload.email,
-            prenom: payload.given_name || '',
-            nom: payload.family_name || '',
-            numero_telephone: null,
-            mot_de_passe_hash: 'KEYCLOAK_AUTH',
-            auth_provider: 'keycloak',
-            utilisateur_role: {
-              create: {
-                role: 'passager',
-                actif: true
-              }
-            }
-          },
+        // Chercher un utilisateur existant avec le même email
+        user = await prisma.utilisateur.findUnique({
+          where: { email: payload.email },
           include: {
             utilisateur_role: { where: { actif: true } }
           }
         });
+
+        if (user) {
+          // Email existe → mettre à jour le keycloak_id (lier le compte)
+          console.log(`🔗 Liaison Keycloak: ${payload.email} (ID: ${user.id_utilisateur}) → keycloak_id=${payload.sub}`);
+          user = await prisma.utilisateur.update({
+            where: { id_utilisateur: user.id_utilisateur },
+            data: { keycloak_id: payload.sub },
+            include: {
+              utilisateur_role: { where: { actif: true } }
+            }
+          });
+        } else {
+          // Aucun compte existant → créer un nouvel utilisateur
+          const numeroTelephone = payload.numero_telephone || payload.phone_number;
+
+          if (!numeroTelephone) {
+            return res.status(422).json({
+              success: false,
+              message: 'Numéro de téléphone requis.',
+              code: 'PHONE_NUMBER_REQUIRED',
+              keycloak_data: {
+                keycloak_id: payload.sub,
+                email: payload.email,
+                prenom: payload.given_name || '',
+                nom: payload.family_name || '',
+              }
+            });
+          }
+
+          console.log(`✅ Création d'un nouvel utilisateur depuis Keycloak: ${payload.email}`);
+          user = await prisma.utilisateur.create({
+            data: {
+              keycloak_id: payload.sub,
+              email: payload.email,
+              prenom: payload.given_name || '',
+              nom: payload.family_name || '',
+              numero_telephone: numeroTelephone,
+              mot_de_passe_hash: 'KEYCLOAK_AUTH',
+              auth_provider: 'keycloak',
+              utilisateur_role: {
+                create: { role: 'passager', actif: true }
+              }
+            },
+            include: {
+              utilisateur_role: { where: { actif: true } }
+            }
+          });
+        }
       }
 
-      // Mettre en cache avec TTL 60 secondes
+      // user est toujours non-null ici (trouvé ou créé)
       await redis.setex(cacheKey, 60, JSON.stringify(user));
     }
 

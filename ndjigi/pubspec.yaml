@@ -30,6 +30,15 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # Auth & Security
+  flutter_secure_storage: ^9.0.0
+  app_links: ^6.3.0              # Deep links pour callbacks OAuth2
+  crypto: ^3.0.0                 # SHA256 pour PKCE
+  url_launcher: ^6.1.0           # Ouvrir les URLs d'authentification
+
 
   cupertino_icons: ^1.0.8
 
@@ -65,7 +74,6 @@ dependencies:
   # firebase_analytics: ^10.7.0
 
   # Storage
-  flutter_secure_storage: ^9.0.0
   drift: ^2.13.0
   drift_flutter: ^0.2.7
   sqlite3_flutter_libs: ^0.5.13
@@ -83,11 +91,10 @@ dependencies:
 
   # Media
   image_picker: ^1.0.0
-  flutter_image_compress: ^1.1.0
   cached_network_image: ^3.3.0
 
   # i18n
-  intl: ^0.19.0
+  intl: ^0.20.2
 
   # Permissions
   permission_handler: ^11.0.0
@@ -119,10 +126,8 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  assets:
+    - assets/banners/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -21,19 +21,18 @@ Utilisateur _$UtilisateurFromJson(Map<String, dynamic> json) {
 
 /// @nodoc
 mixin _$Utilisateur {
-  String get id => throw _privateConstructorUsedError;
-  String get nom => throw _privateConstructorUsedError;
-  String get prenom => throw _privateConstructorUsedError;
+  @JsonKey(name: 'id_utilisateur')
+  String get idUtilisateur => throw _privateConstructorUsedError;
   String get email => throw _privateConstructorUsedError;
-  String get telephone => throw _privateConstructorUsedError;
-  List<UtilisateurRole> get roles => throw _privateConstructorUsedError;
-  String? get photoUrl => throw _privateConstructorUsedError;
-  String? get adresse => throw _privateConstructorUsedError;
-  String? get dateNaissance => throw _privateConstructorUsedError;
-  bool? get estVerifie => throw _privateConstructorUsedError;
-  bool? get estActif => throw _privateConstructorUsedError;
-  DateTime? get dateCreation => throw _privateConstructorUsedError;
-  DateTime? get dateModification => throw _privateConstructorUsedError;
+  String? get prenom => throw _privateConstructorUsedError;
+  String? get nom => throw _privateConstructorUsedError;
+  @JsonKey(name: 'numero_telephone')
+  String? get numeroTelephone => throw _privateConstructorUsedError;
+  List<String> get roles => throw _privateConstructorUsedError;
+  @JsonKey(name: 'statut_compte')
+  String get statutCompte => throw _privateConstructorUsedError;
+  @JsonKey(name: 'deux_fa_activee')
+  bool get deuxFaActivee => throw _privateConstructorUsedError;
 
   /// Serializes this Utilisateur to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -53,19 +52,14 @@ abstract class $UtilisateurCopyWith<$Res> {
   ) = _$UtilisateurCopyWithImpl<$Res, Utilisateur>;
   @useResult
   $Res call({
-    String id,
-    String nom,
-    String prenom,
+    @JsonKey(name: 'id_utilisateur') String idUtilisateur,
     String email,
-    String telephone,
-    List<UtilisateurRole> roles,
-    String? photoUrl,
-    String? adresse,
-    String? dateNaissance,
-    bool? estVerifie,
-    bool? estActif,
-    DateTime? dateCreation,
-    DateTime? dateModification,
+    String? prenom,
+    String? nom,
+    @JsonKey(name: 'numero_telephone') String? numeroTelephone,
+    List<String> roles,
+    @JsonKey(name: 'statut_compte') String statutCompte,
+    @JsonKey(name: 'deux_fa_activee') bool deuxFaActivee,
   });
 }
 
@@ -84,74 +78,49 @@ class _$UtilisateurCopyWithImpl<$Res, $Val extends Utilisateur>
   @pragma('vm:prefer-inline')
   @override
   $Res call({
-    Object? id = null,
-    Object? nom = null,
-    Object? prenom = null,
+    Object? idUtilisateur = null,
     Object? email = null,
-    Object? telephone = null,
+    Object? prenom = freezed,
+    Object? nom = freezed,
+    Object? numeroTelephone = freezed,
     Object? roles = null,
-    Object? photoUrl = freezed,
-    Object? adresse = freezed,
-    Object? dateNaissance = freezed,
-    Object? estVerifie = freezed,
-    Object? estActif = freezed,
-    Object? dateCreation = freezed,
-    Object? dateModification = freezed,
+    Object? statutCompte = null,
+    Object? deuxFaActivee = null,
   }) {
     return _then(
       _value.copyWith(
-            id: null == id
-                ? _value.id
-                : id // ignore: cast_nullable_to_non_nullable
-                      as String,
-            nom: null == nom
-                ? _value.nom
-                : nom // ignore: cast_nullable_to_non_nullable
-                      as String,
-            prenom: null == prenom
-                ? _value.prenom
-                : prenom // ignore: cast_nullable_to_non_nullable
+            idUtilisateur: null == idUtilisateur
+                ? _value.idUtilisateur
+                : idUtilisateur // ignore: cast_nullable_to_non_nullable
                       as String,
             email: null == email
                 ? _value.email
                 : email // ignore: cast_nullable_to_non_nullable
                       as String,
-            telephone: null == telephone
-                ? _value.telephone
-                : telephone // ignore: cast_nullable_to_non_nullable
-                      as String,
+            prenom: freezed == prenom
+                ? _value.prenom
+                : prenom // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            nom: freezed == nom
+                ? _value.nom
+                : nom // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            numeroTelephone: freezed == numeroTelephone
+                ? _value.numeroTelephone
+                : numeroTelephone // ignore: cast_nullable_to_non_nullable
+                      as String?,
             roles: null == roles
                 ? _value.roles
                 : roles // ignore: cast_nullable_to_non_nullable
-                      as List<UtilisateurRole>,
-            photoUrl: freezed == photoUrl
-                ? _value.photoUrl
-                : photoUrl // ignore: cast_nullable_to_non_nullable
-                      as String?,
-            adresse: freezed == adresse
-                ? _value.adresse
-                : adresse // ignore: cast_nullable_to_non_nullable
-                      as String?,
-            dateNaissance: freezed == dateNaissance
-                ? _value.dateNaissance
-                : dateNaissance // ignore: cast_nullable_to_non_nullable
-                      as String?,
-            estVerifie: freezed == estVerifie
-                ? _value.estVerifie
-                : estVerifie // ignore: cast_nullable_to_non_nullable
-                      as bool?,
-            estActif: freezed == estActif
-                ? _value.estActif
-                : estActif // ignore: cast_nullable_to_non_nullable
-                      as bool?,
-            dateCreation: freezed == dateCreation
-                ? _value.dateCreation
-                : dateCreation // ignore: cast_nullable_to_non_nullable
-                      as DateTime?,
-            dateModification: freezed == dateModification
-                ? _value.dateModification
-                : dateModification // ignore: cast_nullable_to_non_nullable
-                      as DateTime?,
+                      as List<String>,
+            statutCompte: null == statutCompte
+                ? _value.statutCompte
+                : statutCompte // ignore: cast_nullable_to_non_nullable
+                      as String,
+            deuxFaActivee: null == deuxFaActivee
+                ? _value.deuxFaActivee
+                : deuxFaActivee // ignore: cast_nullable_to_non_nullable
+                      as bool,
           )
           as $Val,
     );
@@ -168,19 +137,14 @@ abstract class _$$UtilisateurImplCopyWith<$Res>
   @override
   @useResult
   $Res call({
-    String id,
-    String nom,
-    String prenom,
+    @JsonKey(name: 'id_utilisateur') String idUtilisateur,
     String email,
-    String telephone,
-    List<UtilisateurRole> roles,
-    String? photoUrl,
-    String? adresse,
-    String? dateNaissance,
-    bool? estVerifie,
-    bool? estActif,
-    DateTime? dateCreation,
-    DateTime? dateModification,
+    String? prenom,
+    String? nom,
+    @JsonKey(name: 'numero_telephone') String? numeroTelephone,
+    List<String> roles,
+    @JsonKey(name: 'statut_compte') String statutCompte,
+    @JsonKey(name: 'deux_fa_activee') bool deuxFaActivee,
   });
 }
 
@@ -198,74 +162,49 @@ class __$$UtilisateurImplCopyWithImpl<$Res>
   @pragma('vm:prefer-inline')
   @override
   $Res call({
-    Object? id = null,
-    Object? nom = null,
-    Object? prenom = null,
+    Object? idUtilisateur = null,
     Object? email = null,
-    Object? telephone = null,
+    Object? prenom = freezed,
+    Object? nom = freezed,
+    Object? numeroTelephone = freezed,
     Object? roles = null,
-    Object? photoUrl = freezed,
-    Object? adresse = freezed,
-    Object? dateNaissance = freezed,
-    Object? estVerifie = freezed,
-    Object? estActif = freezed,
-    Object? dateCreation = freezed,
-    Object? dateModification = freezed,
+    Object? statutCompte = null,
+    Object? deuxFaActivee = null,
   }) {
     return _then(
       _$UtilisateurImpl(
-        id: null == id
-            ? _value.id
-            : id // ignore: cast_nullable_to_non_nullable
-                  as String,
-        nom: null == nom
-            ? _value.nom
-            : nom // ignore: cast_nullable_to_non_nullable
-                  as String,
-        prenom: null == prenom
-            ? _value.prenom
-            : prenom // ignore: cast_nullable_to_non_nullable
+        idUtilisateur: null == idUtilisateur
+            ? _value.idUtilisateur
+            : idUtilisateur // ignore: cast_nullable_to_non_nullable
                   as String,
         email: null == email
             ? _value.email
             : email // ignore: cast_nullable_to_non_nullable
                   as String,
-        telephone: null == telephone
-            ? _value.telephone
-            : telephone // ignore: cast_nullable_to_non_nullable
-                  as String,
+        prenom: freezed == prenom
+            ? _value.prenom
+            : prenom // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        nom: freezed == nom
+            ? _value.nom
+            : nom // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        numeroTelephone: freezed == numeroTelephone
+            ? _value.numeroTelephone
+            : numeroTelephone // ignore: cast_nullable_to_non_nullable
+                  as String?,
         roles: null == roles
             ? _value._roles
             : roles // ignore: cast_nullable_to_non_nullable
-                  as List<UtilisateurRole>,
-        photoUrl: freezed == photoUrl
-            ? _value.photoUrl
-            : photoUrl // ignore: cast_nullable_to_non_nullable
-                  as String?,
-        adresse: freezed == adresse
-            ? _value.adresse
-            : adresse // ignore: cast_nullable_to_non_nullable
-                  as String?,
-        dateNaissance: freezed == dateNaissance
-            ? _value.dateNaissance
-            : dateNaissance // ignore: cast_nullable_to_non_nullable
-                  as String?,
-        estVerifie: freezed == estVerifie
-            ? _value.estVerifie
-            : estVerifie // ignore: cast_nullable_to_non_nullable
-                  as bool?,
-        estActif: freezed == estActif
-            ? _value.estActif
-            : estActif // ignore: cast_nullable_to_non_nullable
-                  as bool?,
-        dateCreation: freezed == dateCreation
-            ? _value.dateCreation
-            : dateCreation // ignore: cast_nullable_to_non_nullable
-                  as DateTime?,
-        dateModification: freezed == dateModification
-            ? _value.dateModification
-            : dateModification // ignore: cast_nullable_to_non_nullable
-                  as DateTime?,
+                  as List<String>,
+        statutCompte: null == statutCompte
+            ? _value.statutCompte
+            : statutCompte // ignore: cast_nullable_to_non_nullable
+                  as String,
+        deuxFaActivee: null == deuxFaActivee
+            ? _value.deuxFaActivee
+            : deuxFaActivee // ignore: cast_nullable_to_non_nullable
+                  as bool,
       ),
     );
   }
@@ -275,60 +214,50 @@ class __$$UtilisateurImplCopyWithImpl<$Res>
 @JsonSerializable()
 class _$UtilisateurImpl implements _Utilisateur {
   const _$UtilisateurImpl({
-    required this.id,
-    required this.nom,
-    required this.prenom,
+    @JsonKey(name: 'id_utilisateur') required this.idUtilisateur,
     required this.email,
-    required this.telephone,
-    required final List<UtilisateurRole> roles,
-    this.photoUrl,
-    this.adresse,
-    this.dateNaissance,
-    this.estVerifie,
-    this.estActif,
-    this.dateCreation,
-    this.dateModification,
+    this.prenom,
+    this.nom,
+    @JsonKey(name: 'numero_telephone') this.numeroTelephone,
+    final List<String> roles = const [],
+    @JsonKey(name: 'statut_compte') this.statutCompte = 'actif',
+    @JsonKey(name: 'deux_fa_activee') this.deuxFaActivee = false,
   }) : _roles = roles;
 
   factory _$UtilisateurImpl.fromJson(Map<String, dynamic> json) =>
       _$$UtilisateurImplFromJson(json);
 
   @override
-  final String id;
-  @override
-  final String nom;
-  @override
-  final String prenom;
+  @JsonKey(name: 'id_utilisateur')
+  final String idUtilisateur;
   @override
   final String email;
   @override
-  final String telephone;
-  final List<UtilisateurRole> _roles;
+  final String? prenom;
   @override
-  List<UtilisateurRole> get roles {
+  final String? nom;
+  @override
+  @JsonKey(name: 'numero_telephone')
+  final String? numeroTelephone;
+  final List<String> _roles;
+  @override
+  @JsonKey()
+  List<String> get roles {
     if (_roles is EqualUnmodifiableListView) return _roles;
     // ignore: implicit_dynamic_type
     return EqualUnmodifiableListView(_roles);
   }
 
   @override
-  final String? photoUrl;
+  @JsonKey(name: 'statut_compte')
+  final String statutCompte;
   @override
-  final String? adresse;
-  @override
-  final String? dateNaissance;
-  @override
-  final bool? estVerifie;
-  @override
-  final bool? estActif;
-  @override
-  final DateTime? dateCreation;
-  @override
-  final DateTime? dateModification;
+  @JsonKey(name: 'deux_fa_activee')
+  final bool deuxFaActivee;
 
   @override
   String toString() {
-    return 'Utilisateur(id: $id, nom: $nom, prenom: $prenom, email: $email, telephone: $telephone, roles: $roles, photoUrl: $photoUrl, adresse: $adresse, dateNaissance: $dateNaissance, estVerifie: $estVerifie, estActif: $estActif, dateCreation: $dateCreation, dateModification: $dateModification)';
+    return 'Utilisateur(idUtilisateur: $idUtilisateur, email: $email, prenom: $prenom, nom: $nom, numeroTelephone: $numeroTelephone, roles: $roles, statutCompte: $statutCompte, deuxFaActivee: $deuxFaActivee)';
   }
 
   @override
@@ -336,45 +265,32 @@ class _$UtilisateurImpl implements _Utilisateur {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
             other is _$UtilisateurImpl &&
-            (identical(other.id, id) || other.id == id) &&
-            (identical(other.nom, nom) || other.nom == nom) &&
-            (identical(other.prenom, prenom) || other.prenom == prenom) &&
+            (identical(other.idUtilisateur, idUtilisateur) ||
+                other.idUtilisateur == idUtilisateur) &&
             (identical(other.email, email) || other.email == email) &&
-            (identical(other.telephone, telephone) ||
-                other.telephone == telephone) &&
+            (identical(other.prenom, prenom) || other.prenom == prenom) &&
+            (identical(other.nom, nom) || other.nom == nom) &&
+            (identical(other.numeroTelephone, numeroTelephone) ||
+                other.numeroTelephone == numeroTelephone) &&
             const DeepCollectionEquality().equals(other._roles, _roles) &&
-            (identical(other.photoUrl, photoUrl) ||
-                other.photoUrl == photoUrl) &&
-            (identical(other.adresse, adresse) || other.adresse == adresse) &&
-            (identical(other.dateNaissance, dateNaissance) ||
-                other.dateNaissance == dateNaissance) &&
-            (identical(other.estVerifie, estVerifie) ||
-                other.estVerifie == estVerifie) &&
-            (identical(other.estActif, estActif) ||
-                other.estActif == estActif) &&
-            (identical(other.dateCreation, dateCreation) ||
-                other.dateCreation == dateCreation) &&
-            (identical(other.dateModification, dateModification) ||
-                other.dateModification == dateModification));
+            (identical(other.statutCompte, statutCompte) ||
+                other.statutCompte == statutCompte) &&
+            (identical(other.deuxFaActivee, deuxFaActivee) ||
+                other.deuxFaActivee == deuxFaActivee));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(
     runtimeType,
-    id,
-    nom,
-    prenom,
+    idUtilisateur,
     email,
-    telephone,
+    prenom,
+    nom,
+    numeroTelephone,
     const DeepCollectionEquality().hash(_roles),
-    photoUrl,
-    adresse,
-    dateNaissance,
-    estVerifie,
-    estActif,
-    dateCreation,
-    dateModification,
+    statutCompte,
+    deuxFaActivee,
   );
 
   /// Create a copy of Utilisateur
@@ -393,50 +309,39 @@ class _$UtilisateurImpl implements _Utilisateur {
 
 abstract class _Utilisateur implements Utilisateur {
   const factory _Utilisateur({
-    required final String id,
-    required final String nom,
-    required final String prenom,
+    @JsonKey(name: 'id_utilisateur') required final String idUtilisateur,
     required final String email,
-    required final String telephone,
-    required final List<UtilisateurRole> roles,
-    final String? photoUrl,
-    final String? adresse,
-    final String? dateNaissance,
-    final bool? estVerifie,
-    final bool? estActif,
-    final DateTime? dateCreation,
-    final DateTime? dateModification,
+    final String? prenom,
+    final String? nom,
+    @JsonKey(name: 'numero_telephone') final String? numeroTelephone,
+    final List<String> roles,
+    @JsonKey(name: 'statut_compte') final String statutCompte,
+    @JsonKey(name: 'deux_fa_activee') final bool deuxFaActivee,
   }) = _$UtilisateurImpl;
 
   factory _Utilisateur.fromJson(Map<String, dynamic> json) =
       _$UtilisateurImpl.fromJson;
 
   @override
-  String get id;
-  @override
-  String get nom;
-  @override
-  String get prenom;
+  @JsonKey(name: 'id_utilisateur')
+  String get idUtilisateur;
   @override
   String get email;
   @override
-  String get telephone;
+  String? get prenom;
   @override
-  List<UtilisateurRole> get roles;
+  String? get nom;
   @override
-  String? get photoUrl;
+  @JsonKey(name: 'numero_telephone')
+  String? get numeroTelephone;
   @override
-  String? get adresse;
+  List<String> get roles;
   @override
-  String? get dateNaissance;
+  @JsonKey(name: 'statut_compte')
+  String get statutCompte;
   @override
-  bool? get estVerifie;
-  @override
-  bool? get estActif;
-  @override
-  DateTime? get dateCreation;
-  @override
-  DateTime? get dateModification;
+  @JsonKey(name: 'deux_fa_activee')
+  bool get deuxFaActivee;
 
   /// Create a copy of Utilisateur
   /// with the given fields replaced by the non-null parameter values.

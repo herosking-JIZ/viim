@@ -4,6 +4,7 @@ class SecureStorage {
   static const String _keyAccessToken = 'access_token';
   static const String _keyRefreshToken = 'refresh_token';
   static const String _keyUserId = 'user_id';
+  static const String _keyActiveRole = 'active_role';
 
   final FlutterSecureStorage _storage;
 
@@ -70,5 +71,29 @@ class SecureStorage {
   Future<bool> containsKey(String key) async {
     final value = await _storage.read(key: key);
     return value != null;
+  }
+
+  Future<void> saveActiveRole(String role) async {
+    await _storage.write(key: _keyActiveRole, value: role);
+  }
+
+  Future<String?> getActiveRole() async {
+    return await _storage.read(key: _keyActiveRole);
+  }
+
+  Future<void> saveCodeVerifier(String verifier) async {
+    print('🔵 NDJIGI-AUTH: [storage] WRITE pkce_code_verifier');
+    await _storage.write(key: 'pkce_code_verifier', value: verifier);
+  }
+
+  Future<String?> getCodeVerifier() async {
+    final value = await _storage.read(key: 'pkce_code_verifier');
+    print('🔵 NDJIGI-AUTH: [storage] READ pkce_code_verifier = ${value == null ? "NULL" : "PRESENT"}');
+    return value;
+  }
+
+  Future<void> deleteCodeVerifier() async {
+    print('🔵 NDJIGI-AUTH: [storage] DELETE pkce_code_verifier');
+    await _storage.delete(key: 'pkce_code_verifier');
   }
 }

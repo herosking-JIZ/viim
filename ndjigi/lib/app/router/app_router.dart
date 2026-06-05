@@ -1,14 +1,77 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/constants/routes.dart';
-import '../../core/storage/secure_storage.dart';
+import '../../features/auth/presentation/providers/auth_provider.dart';
+import '../../features/auth/presentation/screens/splash_screen.dart';
+import '../../features/auth/presentation/screens/welcome_screen.dart';
+import '../../features/auth/presentation/screens/login_screen.dart';
+import '../../features/auth/presentation/screens/register_screen.dart';
+import '../../features/auth/presentation/screens/role_selection_screen.dart';
+import '../../features/auth/presentation/screens/compte_suspendu_screen.dart';
+import '../../features/auth/presentation/screens/keycloak_callback_screen.dart';
+import '../../features/auth/presentation/screens/phone_collection_screen.dart';
+import '../../features/home/presentation/screens/home_passager_screen.dart';
+import '../../features/home/presentation/screens/home_chauffeur_screen.dart';
+import '../../features/home/presentation/screens/home_proprietaire_screen.dart';
 
-class AppRouter {
-  static final GoRouter router = GoRouter(
+final appRouterProvider = Provider<GoRouter>((ref) {
+  final authListenable = ValueNotifier<AuthState>(ref.read(authProvider));
+  ref.listen<AuthState>(authProvider, (previous, next) {
+    authListenable.value = next;
+  });
+  ref.onDispose(authListenable.dispose);
+
+  return GoRouter(
     initialLocation: Routes.splash,
-    redirect: _handleRedirect,
+    refreshListenable: authListenable,
+    onException: (context, state, router) {
+      if (state.uri.scheme == 'ndjigi-mobile') {
+        // Deep link custom — app_links s'en occupe, GoRouter ignore
+        return;
+      }
+      // Toute autre erreur de routing → splash
+      router.go(Routes.splash);
+    },
+    redirect: (context, state) {
+      // ✅ Ignorer les URLs avec scheme non-http dans le redirect
+      final scheme = state.uri.scheme;
+      if (scheme != 'http' && scheme != 'https' && scheme != '') {
+        return null; // GoRouter ne touche pas à ces URLs
+      }
+
+      final authState = authListenable.value;
+
+      final isSplash = state.matchedLocation == Routes.splash;
+      final isAuth = [Routes.welcome, Routes.login, Routes.register].contains(state.matchedLocation);
+      final isRoleSelection = state.matchedLocation == Routes.roleSelection;
+      final isCompteSuspendu = state.matchedLocation == Routes.compteSuspendu;
+      final isKeycloakCallback = state.matchedLocation == Routes.keycloakCallback;
+      final isPhoneCollection = state.matchedLocation == Routes.phoneCollection;
+      final isHome = state.matchedLocation.startsWith('/home/');
+
+      if (authState.isLoading) {
+        return isSplash ? null : Routes.splash;
+      }
+
+      if (authState.isAuthenticated && authState.user?.statutCompte == 'suspendu') {
+        return isCompteSuspendu ? null : Routes.compteSuspendu;
+      }
+
+      if (authState.isAuthenticated) {
+        if (isHome) return null;
+        if (isAuth || isSplash) {
+          return '/home/${authState.activeRole ?? "passager"}';
+        }
+        return null;
+      }
+
+      if (isAuth || isSplash || isRoleSelection || isKeycloakCallback || isPhoneCollection) {
+        return null;
+      }
+      return Routes.splash;
+    },
     routes: [
-      // Auth routes (no shell)
       GoRoute(
         path: Routes.splash,
         name: 'splash',
@@ -30,307 +93,44 @@ class AppRouter {
         builder: (context, state) => const RegisterScreen(),
       ),
       GoRoute(
-        path: Routes.otp,
-        name: 'otp',
-        builder: (context, state) => const OtpScreen(),
-      ),
-      GoRoute(
-        path: Routes.completeProfile,
-        name: 'complete-profile',
-        builder: (context, state) => const CompleteProfileScreen(),
-      ),
-      GoRoute(
         path: Routes.roleSelection,
         name: 'role-selection',
         builder: (context, state) => const RoleSelectionScreen(),
-      ),
-      GoRoute(
-        path: Routes.documentUpload,
-        name: 'document-upload',
-        builder: (context, state) => const DocumentUploadScreen(),
-      ),
-      GoRoute(
-        path: Routes.validationAttente,
-        name: 'validation-attente',
-        builder: (context, state) => const ValidationAttenteScreen(),
       ),
       GoRoute(
         path: Routes.compteSuspendu,
         name: 'compte-suspendu',
         builder: (context, state) => const CompteSuspendoScreen(),
       ),
-
-      // Main routes with shell (bottom navigation)
-      ShellRoute(
-        builder: (context, state, child) => MainShell(child: child),
-        routes: [
-          GoRoute(
-            path: Routes.home,
-            name: 'home',
-            builder: (context, state) => const HomeScreen(),
-          ),
-          GoRoute(
-            path: Routes.wallet,
-            name: 'wallet',
-            builder: (context, state) => const WalletScreen(),
-          ),
-          GoRoute(
-            path: Routes.profil,
-            name: 'profil',
-            builder: (context, state) => const ProfilScreen(),
-          ),
-          GoRoute(
-            path: Routes.notifications,
-            name: 'notifications',
-            builder: (context, state) => const NotificationsScreen(),
-          ),
-        ],
-      ),
-
-      // Other routes
       GoRoute(
-        path: Routes.destinationSearch,
-        name: 'destination-search',
-        builder: (context, state) => const DestinationSearchScreen(),
+        path: Routes.keycloakCallback,
+        name: 'keycloak-callback',
+        builder: (context, state) => KeycloakCallbackScreen(
+          code: state.uri.queryParameters['code'],
+          state: state.uri.queryParameters['state'],
+          error: state.uri.queryParameters['error'],
+        ),
       ),
       GoRoute(
-        path: Routes.courseHistory,
-        name: 'course-history',
-        builder: (context, state) => const CourseHistoryScreen(),
+        path: Routes.phoneCollection,
+        name: 'phone-collection',
+        builder: (context, state) => const PhoneCollectionScreen(),
+      ),
+      GoRoute(
+        path: '/home/passager',
+        name: 'home-passager',
+        builder: (context, state) => const HomePassagerScreen(),
+      ),
+      GoRoute(
+        path: '/home/chauffeur',
+        name: 'home-chauffeur',
+        builder: (context, state) => const HomeChauffeurScreen(),
+      ),
+      GoRoute(
+        path: '/home/proprietaire',
+        name: 'home-proprietaire',
+        builder: (context, state) => const HomeProprietaireScreen(),
       ),
     ],
   );
-
-  static Future<String?> _handleRedirect(
-    BuildContext context,
-    GoRouterState state,
-  ) async {
-    final storage = SecureStorage();
-    final token = await storage.getAccessToken();
-    final isLoggedIn = token != null && token.isNotEmpty;
-
-    final isSplash = state.matchedLocation == Routes.splash;
-    final isAuth = state.matchedLocation == Routes.login ||
-        state.matchedLocation == Routes.register ||
-        state.matchedLocation == Routes.welcome;
-
-    if (!isLoggedIn && !isAuth && !isSplash) {
-      return Routes.splash;
-    }
-
-    if (isLoggedIn && (isAuth || isSplash)) {
-      return Routes.home;
-    }
-
-    return null;
-  }
-}
-
-// TODO: Import actual screens from features
-// Placeholder screens for compilation
-class SplashScreen extends StatelessWidget {
-  const SplashScreen({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(child: Text('Splash Screen')),
-    );
-  }
-}
-
-class WelcomeScreen extends StatelessWidget {
-  const WelcomeScreen({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(child: Text('Welcome Screen')),
-    );
-  }
-}
-
-class LoginScreen extends StatelessWidget {
-  const LoginScreen({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(child: Text('Login Screen')),
-    );
-  }
-}
-
-class RegisterScreen extends StatelessWidget {
-  const RegisterScreen({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(child: Text('Register Screen')),
-    );
-  }
-}
-
-class OtpScreen extends StatelessWidget {
-  const OtpScreen({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(child: Text('OTP Screen')),
-    );
-  }
-}
-
-class CompleteProfileScreen extends StatelessWidget {
-  const CompleteProfileScreen({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(child: Text('Complete Profile Screen')),
-    );
-  }
-}
-
-class RoleSelectionScreen extends StatelessWidget {
-  const RoleSelectionScreen({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(child: Text('Role Selection Screen')),
-    );
-  }
-}
-
-class DocumentUploadScreen extends StatelessWidget {
-  const DocumentUploadScreen({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(child: Text('Document Upload Screen')),
-    );
-  }
-}
-
-class ValidationAttenteScreen extends StatelessWidget {
-  const ValidationAttenteScreen({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(child: Text('Validation Attente Screen')),
-    );
-  }
-}
-
-class CompteSuspendoScreen extends StatelessWidget {
-  const CompteSuspendoScreen({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(child: Text('Compte Suspendo Screen')),
-    );
-  }
-}
-
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Home')),
-      body: Center(child: Text('Home Screen')),
-    );
-  }
-}
-
-class WalletScreen extends StatelessWidget {
-  const WalletScreen({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Wallet')),
-      body: Center(child: Text('Wallet Screen')),
-    );
-  }
-}
-
-class ProfilScreen extends StatelessWidget {
-  const ProfilScreen({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Profil')),
-      body: Center(child: Text('Profil Screen')),
-    );
-  }
-}
-
-class NotificationsScreen extends StatelessWidget {
-  const NotificationsScreen({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Notifications')),
-      body: Center(child: Text('Notifications Screen')),
-    );
-  }
-}
-
-class DestinationSearchScreen extends StatelessWidget {
-  const DestinationSearchScreen({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Search')),
-      body: Center(child: Text('Destination Search Screen')),
-    );
-  }
-}
-
-class CourseHistoryScreen extends StatelessWidget {
-  const CourseHistoryScreen({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('History')),
-      body: Center(child: Text('Course History Screen')),
-    );
-  }
-}
-
-class MainShell extends StatelessWidget {
-  final Widget child;
-
-  const MainShell({required this.child, Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: child,
-      bottomNavigationBar: BottomNavigationBar(
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.wallet), label: 'Wallet'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profil'),
-          BottomNavigationBarItem(icon: Icon(Icons.notifications), label: 'Notifications'),
-        ],
-        currentIndex: 0,
-        onTap: (index) {
-          // Handle navigation
-        },
-      ),
-    );
-  }
-}
+});

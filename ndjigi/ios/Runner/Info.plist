@@ -66,5 +66,17 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- Deep link callback OAuth2 -->
+<key>CFBundleURLTypes</key>
+<array>
+    <dict>
+        <key>CFBundleURLSchemes</key>
+        <array>
+            <string>ndjigi-mobile</string>
+        </array>
+        <key>CFBundleURLName</key>
+        <string>com.ndjigi.mobile</string>
+    </dict>
+</array>
 </dict>
 </plist>

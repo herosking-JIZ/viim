@@ -64,6 +64,7 @@ router.use('/code-promo', promoRoute);
 router.use('/proprietaire', proprietaireRoute);
 router.use('/reservation', reservationRoute);
 router.use('/utilisateurs', utilisateurRoute);
+router.use('/users', utilisateurRoute); // Alias pour compatibilité Flutter
 router.use('/admin/gestionnaires', gestionnaireRoute);
 // ✅ Routes pour gestionnaire authentifié (opérations personnelles)
 router.use('/gestionnaire', gestionnaireRoute);

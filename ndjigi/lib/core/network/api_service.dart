@@ -26,13 +26,21 @@ class ApiService {
       ),
     );
 
-    // Logging interceptor (dev only)
+    // Logging interceptor (dev only) - masquer les tokens sensibles
     if (AppConfig.isDebug) {
       _dio.interceptors.add(
         LogInterceptor(
           requestBody: true,
           responseBody: true,
-          logPrint: (obj) => print(obj),
+          logPrint: (obj) {
+            // Masquer les tokens en clair
+            var log = obj.toString();
+            log = log.replaceAll(RegExp(r'Bearer [^,\s}]+'), 'Bearer ****');
+            log = log.replaceAll(RegExp(r'"access_token":"[^"]+'), '"access_token":"****');
+            log = log.replaceAll(RegExp(r'"refresh_token":"[^"]+'), '"refresh_token":"****');
+            log = log.replaceAll(RegExp(r'"id_token":"[^"]+'), '"id_token":"****');
+            print(log);
+          },
         ),
       );
     }
@@ -92,7 +100,7 @@ class ApiService {
 
   Future<Response> _refreshToken(String refreshToken) {
     return _dio.post(
-      '/auth/refresh-token',
+      '/auth/refresh',
       options: Options(
         extra: {'skipRefresh': true},
       ),

@@ -35,7 +35,10 @@
       "Bash(ls -la /c/PubCache/hosted/pub.dev/ 2>/dev/null | grep latlong)",
       "Read(//c/PubCache/hosted/pub.dev//**)",
       "Bash(cd /c/projet/ndjigiv1/ndjigi_passager && grep -n \"withOpacity\" lib/core/theme/app_theme.dart lib/features/home/presentation/screens/home_screen.dart lib/features/booking/presentation/screens/booking_confirm_screen.dart lib/features/tracking/presentation/screens/tracking_screen.dart)",
-      "Read(//c/c/projet/ndjigiv1/ndjigi_passager/lib/core/theme/**)"
+      "Read(//c/c/projet/ndjigiv1/ndjigi_passager/lib/core/theme/**)",
+      "Bash(Get-ChildItem -Path \"c:\\\\projet\\\\ndjigiv1\" -Force)",
+      "Bash(Select-Object Name, Mode)",
+      "Bash(Get-ChildItem -Path \"c:\\\\projet\\\\ndjigiv1\" -Recurse -Directory -Depth 2)"
     ]
   }
 }
