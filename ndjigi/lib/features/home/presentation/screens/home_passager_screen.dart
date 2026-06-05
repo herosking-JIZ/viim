@@ -73,9 +73,12 @@ class _HomePassagerScreenState extends ConsumerState<HomePassagerScreen> {
       );
 
       setState(() {
-        _walletData = futures[1];
+        final walletResponse = futures[1];
+        _walletData = walletResponse['data'] as Map<String, dynamic>?;
+
         final notifResponse = futures[2];
-        _notifications = notifResponse['notifications'] as List<dynamic>?;
+        _notifications = notifResponse['data'] as List<dynamic>?;
+
         _isLoading = false;
       });
     } catch (e) {
@@ -89,7 +92,8 @@ class _HomePassagerScreenState extends ConsumerState<HomePassagerScreen> {
   int _getUnreadNotificationCount() {
     if (_notifications == null) return 0;
     return _notifications!
-        .where((n) => n is Map && n['lue'] == false)
+        .whereType<Map<String, dynamic>>()
+        .where((n) => n['lu'] == false)
         .length;
   }
 
@@ -124,8 +128,8 @@ class _HomePassagerScreenState extends ConsumerState<HomePassagerScreen> {
     }
 
     final unreadCount = _getUnreadNotificationCount();
-    final solde = _walletData?['solde'] ?? 0;
-    final devise = _walletData?['devise'] ?? 'FCFA';
+    final solde = _walletData?['solde'] ?? '0';
+    final devise = _walletData?['devise'] ?? 'XOF';
 
     return Scaffold(
       appBar: AppBar(
