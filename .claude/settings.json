@@ -38,7 +38,10 @@
       "Read(//c/c/projet/ndjigiv1/ndjigi_passager/lib/core/theme/**)",
       "Bash(Get-ChildItem -Path \"c:\\\\projet\\\\ndjigiv1\" -Force)",
       "Bash(Select-Object Name, Mode)",
-      "Bash(Get-ChildItem -Path \"c:\\\\projet\\\\ndjigiv1\" -Recurse -Directory -Depth 2)"
+      "Bash(Get-ChildItem -Path \"c:\\\\projet\\\\ndjigiv1\" -Recurse -Directory -Depth 2)",
+      "Bash(cat)",
+      "Bash(chmod +x /tmp/real-auth-test.sh)",
+      "Bash(bash /tmp/real-auth-test.sh)"
     ]
   }
 }

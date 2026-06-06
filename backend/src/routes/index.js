@@ -1,6 +1,8 @@
 const express = require('express');
 const keycloakAuthRoutes = require('./keycloakAuthRoutes');
+const publicRoute = require('./publicRoute');
 const trajetRoute = require('./trajetRoute');
+const trajetPartageRoute = require('./trajetPartageRoute');
 const vehiculeRoute = require('./vehiculeRoute');
 const parkingRoute = require('./parkingRoute');
 const chauffeurRoute = require('./chauffeurRoute');
@@ -17,8 +19,12 @@ const gestionnaireRoute = require('./gestionnaireRoute');
 const zoneTarifaireRoute = require('./zoneTarifaireRoute');
 const dashboardRoute = require('./dashboardRoute');
 const documentRoute = require('./documentRoute');
+const photoRoute = require('./photoRoute');
+const addressRoute = require('./addressRoute');
+const contactRoute = require('./contactRoute');
 const supportRoutes = require('./supportRoute');
 const financesRoutes = require('./financesRoute');
+const faqRoute = require('./faqRoute');
 
 const zoneRoutes = require('./zoneTarifaireRoute');
 const categorieRoutes = require('./categorieVehiculeRoute');
@@ -32,9 +38,10 @@ console.log('Chargement des routes...');
 
 const router = express.Router();
 
-// ✨ Phase 4: Routes Keycloak uniquement
-// Enregistrées en PREMIER pour authentification
+// ✨ Phase 4: Routes Keycloak + Public routes (no auth required)
+// Enregistrées en PREMIER avant le middleware d'authentification
 router.use('/auth', keycloakAuthRoutes);
+router.use('/public', publicRoute);
 
 // Appliquer l'authentification (supports both Keycloak and local/JWT) à toutes les autres routes
 // Try Keycloak first, fallback to local JWT auth
@@ -52,6 +59,7 @@ router.use((req, res, next) => {
 router.use(requirePermanentPassword);
 
 router.use('/trajets', trajetRoute);
+router.use('/trajets', trajetPartageRoute);
 router.use('/vehicules', vehiculeRoute);
 router.use('/chauffeurs', chauffeurRoute);
 router.use('/affectation', affectationRoute);
@@ -72,11 +80,15 @@ router.use('/vehicule', vehiculeRoute);
 router.use('/zone-tarifaire', zoneTarifaireRoute);
 router.use('/dashboard', dashboardRoute);
 router.use('/documents', documentRoute);
+router.use('/photos', photoRoute);
+router.use('/addresses', addressRoute);
+router.use('/contacts-confiance', contactRoute);
 router.use('/config/zones', zoneRoutes);
 router.use('/config/categories', categorieRoutes);
 router.use('/config/tarifs', tarifRoutes);
 router.use('/support/tickets', supportRoutes);
 router.use('/finances', financesRoutes);
+router.use('/faqs', faqRoute);
 
 
 

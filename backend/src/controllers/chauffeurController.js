@@ -3,6 +3,7 @@
  */
 
 const { prisma } = require('../config/db');
+const { enregistrerPosition } = require('../services/tracking.service');
 
 const ChauffeurController = {
 
@@ -145,7 +146,7 @@ const ChauffeurController = {
       const { statut_disponibilite } = req.body;
       const id = req.user.id_utilisateur;
 
-      if (!['disponible', 'occupe', 'hors_ligne'].includes(statut_disponibilite)) {
+      if (!['en_ligne', 'hors_ligne', 'en_course'].includes(statut_disponibilite)) {
         return res.status(400).json({ success: false, message: 'Statut invalide.' });
       }
 
@@ -207,6 +208,49 @@ const ChauffeurController = {
     } catch (error) {
       console.error('[chauffeur.statistiques]', error);
       return res.status(500).json({ success: false, message: 'Erreur serveur.' });
+    }
+  },
+
+  // ── Envoyer sa position GPS ──────────────────────────────────
+  async envoyerMaPosition(req, res) {
+    try {
+      const { latitude, longitude, vitesse, cap } = req.body;
+      const id_chauffeur = req.user.id_utilisateur;
+
+      if (latitude === undefined || longitude === undefined) {
+        return res.status(400).json({
+          success: false,
+          message: 'Latitude et longitude requises.',
+          errors: { code: 'INVALID_POSITION' }
+        });
+      }
+
+      const affectation = await prisma.affectation_vehicule.findFirst({
+        where: { id_chauffeur, est_active: true },
+        select: { id_vehicule: true }
+      });
+
+      if (!affectation) {
+        return res.status(404).json({
+          success: false,
+          message: 'Aucun véhicule affecté.',
+          errors: { code: 'NO_ACTIVE_VEHICLE' }
+        });
+      }
+
+      await enregistrerPosition(affectation.id_vehicule, { latitude, longitude, vitesse, cap });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Position enregistrée.'
+      });
+    } catch (error) {
+      console.error('[chauffeur.envoyerMaPosition]', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur serveur.',
+        errors: { code: 'INTERNAL_ERROR', details: error.message }
+      });
     }
   },
 };

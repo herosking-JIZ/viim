@@ -1,25 +1,25 @@
 /**
  * MIDDLEWARES/KEYCLOAKAUTH.JS
- * Validation Keycloak + auto-provisioning utilisateurs
+ * Adaptateur Express pour l'authentification Keycloak
  *
- * Flow:
- *  1. Extrait Bearer token
- *  2. Valide via JWKS (RS256, iss, exp, aud)
- *  3. Si user inexistant en BDD → crée ligne utilisateur (auto-provisioning)
- *  4. Synchronise les rôles depuis token.realm_access.roles
- *  5. Attache req.user avec rôles Keycloak
+ * Utilise le service centralisé resolveUserFromToken() qui:
+ *  1. Valide le token via JWKS/RS256 (signature sûre)
+ *  2. Vérifie la blacklist Redis (logout)
+ *  3. Résout l'utilisateur avec cache + auto-provisioning
+ *  4. Applique les checks de compte
+ *  5. Mappe les rôles Keycloak
+ *
+ * Ce middleware mappe les erreurs typées vers les bons codes HTTP
  */
 
-const { verifyKeycloakToken } = require('../config/keycloak');
-const { prisma } = require('../config/db');
-const { ROLE_MAPPING, getLocalRole } = require('../constants/roles');
+const { resolveUserFromToken, AuthError } = require('../services/auth/resolveUser');
 
 const keycloakAuth = async (req, res, next) => {
   try {
-    // 1️⃣ Récupérer et vérifier le format du header
+    // Récupérer le token depuis Authorization header
     const authHeader = req.headers.authorization;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!authHeader) {
       return res.status(401).json({
         success: false,
         message: 'Token manquant. Connectez-vous.',
@@ -27,101 +27,58 @@ const keycloakAuth = async (req, res, next) => {
       });
     }
 
-    const token = authHeader.split(' ')[1];
-
-    // 2️⃣ Valider le token via JWKS
-    let decoded;
-    try {
-      decoded = await verifyKeycloakToken(token);
-    } catch (err) {
-      console.error('❌ Token validation error:', err.message);
-      return res.status(401).json({
-        success: false,
-        message: 'Token invalide ou expiré.',
-        code: 'INVALID_TOKEN'
-      });
+    // Extraire le token brut (gère "Bearer " et doubles "Bearer Bearer")
+    let token = authHeader;
+    if (token.startsWith('Bearer ')) {
+      token = token.substring(7); // Remove "Bearer "
     }
 
-    // 3️⃣ Extraire les données du token
-    const {
-      sub: keycloak_id,
-      email,
-      given_name: prenom,
-      family_name: nom,
-      realm_access: realmAccess = {}
-    } = decoded;
+    // Résoudre l'utilisateur via le service d'auth centralisé
+    const { user, roles, keycloak_id, payload } = await resolveUserFromToken(token);
 
-    if (!keycloak_id) {
-      return res.status(401).json({
-        success: false,
-        message: 'Token mal formé (sub manquant).',
-        code: 'INVALID_TOKEN_STRUCTURE'
-      });
-    }
-
-    // 4️⃣ Récupérer ou créer l'utilisateur (auto-provisioning)
-    let user = await prisma.utilisateur.findUnique({
-      where: { keycloak_id },
-      include: {
-        utilisateur_role: { where: { actif: true } }
-      }
-    });
-
-    if (!user) {
-      console.log(`✅ Auto-provisioning user: ${keycloak_id} (${email})`);
-
-      // Créer l'utilisateur avec un numero_telephone temporaire
-      // (sera complété lors du premier login complet)
-      const tempPhone = `temp-${keycloak_id.substring(0, 8)}`;
-
-      user = await prisma.utilisateur.create({
-        data: {
-          keycloak_id,
-          email: email || null,
-          prenom: prenom || '',
-          nom: nom || '',
-          numero_telephone: tempPhone,
-          auth_provider: 'keycloak',
-          utilisateur_role: {
-            create: {
-              role: 'passager',
-              actif: true
-            }
-          }
-        },
-        include: {
-          utilisateur_role: { where: { actif: true } }
-        }
-      });
-
-      console.log(`  ✅ User créé: ${user.id_utilisateur}`);
-    }
-
-    // 5️⃣ Extraire et convertir les rôles du token Keycloak
-    const kcRealmRoles = realmAccess.roles || [];
-
-    // Convertir les rôles Keycloak realm (ndjigi-*) en rôles locaux (admin, gestionnaire, etc.)
-    const localRoles = kcRealmRoles
-      .map(kcRole => getLocalRole(kcRole))
-      .filter(role => role !== null); // Exclure les rôles invalides
-
-    // 6️⃣ Attacher l'utilisateur à la requête
+    // Attacher l'utilisateur à la requête pour les middlewares suivants
     req.user = {
+      ...user,
       id_utilisateur: user.id_utilisateur,
-      keycloak_id: user.keycloak_id,
-      email: user.email,
-      nom: user.nom,
-      prenom: user.prenom,
-      numero_telephone: user.numero_telephone,
-      photo_profil: user.photo_profil,
-      roles: localRoles, // Rôles depuis Keycloak token (source de vérité)
+      keycloak_id,
+      roles,
       auth_provider: 'keycloak',
       utilisateur_role: user.utilisateur_role,
-      token: token // Garder le token pour les appels Admin API
+      token // Garder le token pour les appels Admin API
     };
 
     next();
+
   } catch (err) {
+    // Mapper les erreurs typées vers les bons codes HTTP
+    if (err instanceof AuthError) {
+      console.error(`❌ Auth error: ${err.code} - ${err.message}`);
+
+      // Déterminer le code HTTP en fonction du code d'erreur
+      let statusCode = 401; // Par défaut
+      if (err.code === 'ACCOUNT_PENDING_ACTIVATION') {
+        statusCode = 403;
+      } else if (err.code === 'PHONE_NUMBER_REQUIRED') {
+        statusCode = 422;
+      } else if (err.code === 'ACCOUNT_BLOCKED') {
+        statusCode = 401;
+      }
+
+      const response = {
+        success: false,
+        message: err.message,
+        code: err.code
+      };
+
+      // Ajouter keycloak_data pour PHONE_NUMBER_REQUIRED
+      if (err.details && err.details.keycloak_data) {
+        response.keycloak_data = err.details.keycloak_data;
+      }
+
+      return res.status(statusCode).json(response);
+    }
+
+    // Erreur interne (non-AuthError)
     console.error('❌ keycloakAuth error:', err);
     res.status(500).json({
       success: false,

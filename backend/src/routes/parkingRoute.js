@@ -64,9 +64,9 @@ parkingRoute.get  ('/:parkingId/maintenance/:maintenanceId',      can('parking:l
 parkingRoute.patch('/:parkingId/maintenance/:maintenanceId',      joiValidate({ body: updateMaintenanceStatusSchema }), can('parking:gerer'), MaintenanceController.mettreAJourStatut);
 
 // ─── PHOTO ENDPOINTS ──────────────────────────────────────────
-parkingRoute.post ('/mouvements/:mouvementId/photos',   photoUpload.single('photo'), can('parking:gerer'), PhotoController.uploadPhotoMouvement);
-parkingRoute.post ('/maintenance/:maintenanceId/photos', photoUpload.single('photo'), can('parking:gerer'), PhotoController.uploadPhotoMaintenance);
-parkingRoute.get  ('/photos/:photoId',                 PhotoController.getPhoto);
-parkingRoute.delete('/photos/:photoId',                can('parking:gerer'),         PhotoController.deletePhoto);
 
+
+parkingRoute.post('/mouvements/:mouvementId/photos',    photoUpload.single('photo'), can('parking:gerer'), PhotoController.uploadPhoto);
+parkingRoute.post('/maintenance/:maintenanceId/photos', photoUpload.single('photo'), can('parking:gerer'), PhotoController.uploadPhoto);
+parkingRoute.get ('/photos/:photoId',                  PhotoController.servePhoto);
 module.exports = parkingRoute;

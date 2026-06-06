@@ -81,6 +81,8 @@ const KeycloakAuthController = {
 
       // 2️⃣ Décoder le access token pour récupérer les données utilisateur
       console.log('🔓 Decoding JWT token...');
+      // ✅ SAFE: Token reçu directement de Keycloak (serveur→serveur), pas d'input client
+      // La signature a déjà été validée par Keycloak. Ce decode extrait juste les claims.
       const decoded = jwt.decode(kcTokens.access_token);
 
       if (!decoded) {
@@ -350,6 +352,8 @@ const KeycloakAuthController = {
       // Blacklist tokens (si access_token fourni)
       if (access_token) {
         try {
+          // ✅ SAFE: Token fourni en paramètre depuis une requête authentifiée
+          // Utilisé uniquement pour extraire l'expiration et le jti (TTL blacklist)
           const decoded = jwt.decode(access_token);
           if (decoded && decoded.exp) {
             const now = Math.floor(Date.now() / 1000);

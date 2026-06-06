@@ -16,6 +16,15 @@ const KEYCLOAK_REALM = process.env.KEYCLOAK_REALM || 'ndjigi';
 const KEYCLOAK_CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID || 'ndjigi-backend';
 const KEYCLOAK_CLIENT_SECRET = process.env.KEYCLOAK_CLIENT_SECRET;
 
+// Liste des issuers acceptables (pour dev multi-réseau)
+let KEYCLOAK_ALLOWED_ISSUERS = null;
+if (process.env.KEYCLOAK_ALLOWED_ISSUERS) {
+  KEYCLOAK_ALLOWED_ISSUERS = process.env.KEYCLOAK_ALLOWED_ISSUERS.split(',').map(s => s.trim());
+  console.log(`✅ KEYCLOAK_ALLOWED_ISSUERS chargé:`, KEYCLOAK_ALLOWED_ISSUERS);
+} else {
+  console.warn(`⚠️ KEYCLOAK_ALLOWED_ISSUERS non défini, utilisation du comportement par défaut`);
+}
+
 // ─── JWKS Client (pour validation tokens) ───
 let kcJwksClient = null;
 
@@ -65,9 +74,11 @@ async function verifyKeycloakToken(token) {
     const publicKey = key.getPublicKey();
 
     // Vérifier la signature et l'expiration
+    const issuerOption = KEYCLOAK_ALLOWED_ISSUERS || `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}`;
+
     const verified = jwt.verify(token, publicKey, {
       algorithms: ['RS256'],
-      issuer: `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}`,
+      issuer: issuerOption,
     });
 
     return verified;
@@ -83,4 +94,5 @@ module.exports = {
   KEYCLOAK_URL,
   KEYCLOAK_REALM,
   KEYCLOAK_CLIENT_ID,
+  KEYCLOAK_ALLOWED_ISSUERS,
 };

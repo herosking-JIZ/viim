@@ -36,10 +36,8 @@ const ROLES_PERMISSIONS = {
     'notification:lire',
     'notification:marquer_lu',
 
-    // Support
+    // Support (users can only create tickets, agents handle the rest)
     'support:creer_ticket',
-    'support:lire_ticket',
-    'support:mise_a_jour_statut',
 
     // remboursements
     'remboursement:demander',
@@ -70,10 +68,8 @@ const ROLES_PERMISSIONS = {
     'notification:lire',
     'notification:marquer_lu',
 
-        // Support
+    // Support (users can only create tickets, agents handle the rest)
     'support:creer_ticket',
-    'support:lire_ticket',
-    'support:mise_a_jour_statut',
 
     // remboursements
     'remboursement:demander',
@@ -103,10 +99,8 @@ const ROLES_PERMISSIONS = {
     'notification:lire',
     'notification:marquer_lu',
 
-        // Support
+    // Support (users can only create tickets, agents handle the rest)
     'support:creer_ticket',
-    'support:lire_ticket',
-    'support:mise_a_jour_statut',
 
     // remboursements
     'remboursement:demander',
@@ -128,10 +122,8 @@ const ROLES_PERMISSIONS = {
     'notification:lire',
     'notification:marquer_lu',
 
-        // Support
+    // Support (users can only create tickets, agents handle the rest)
     'support:creer_ticket',
-    'support:lire_ticket',
-    'support:mise_a_jour_statut',
 
     // remboursements
     'remboursement:demander',

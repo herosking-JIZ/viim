@@ -12,7 +12,5 @@ router.use(authenticate)
 router.get('/kpis',            can('finances:lire'),        financesController.kpis)
 router.get('/transactions',    can('finances:lire'),        financesController.transactions)
 
-// ── Remboursements ────────────────────────────────────────────
-router.post('/remboursements', can('remboursement:demander'), supportController.rembourser)
 
 module.exports = router;

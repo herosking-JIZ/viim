@@ -331,9 +331,17 @@ const TrajetController = {
       if (!STATUTS_DEMARRABLES.includes(trajet.statut)) {
         return res.status(400).json({ success: false, message: `Impossible de démarrer un trajet "${trajet.statut}".`, data: null, errors: null })
       }
-      const updated = await prisma.trajet.update({
-        where: { id_trajet: id },
-        data: { statut: 'en_cours', date_heure_debut: new Date() }
+      const updated = await prisma.$transaction(async (tx) => {
+        const t = await tx.trajet.update({
+          where: { id_trajet: id },
+          data: { statut: 'en_cours', date_heure_debut: new Date() }
+        })
+        const affectation = await tx.affectation_vehicule.findUnique({ where: { id_affectation: trajet.id_affectation } })
+        if (affectation) {
+          await tx.chauffeur.update({ where: { id_chauffeur: affectation.id_chauffeur }, data: { statut_disponibilite: 'en_course' } })
+          await tx.vehicule.update({ where: { id_vehicule: affectation.id_vehicule }, data: { statut: 'en_course' } })
+        }
+        return t
       })
       return res.status(200).json({ success: true, message: 'Trajet démarré.', data: updated, errors: null })
     } catch (error) {
@@ -364,7 +372,8 @@ const TrajetController = {
         })
         const affectation = await tx.affectation_vehicule.findUnique({ where: { id_affectation: trajet.id_affectation } })
         if (affectation) {
-          await tx.chauffeur.update({ where: { id_chauffeur: affectation.id_chauffeur }, data: { nb_courses_effectuees: { increment: 1 } } })
+          await tx.chauffeur.update({ where: { id_chauffeur: affectation.id_chauffeur }, data: { nb_courses_effectuees: { increment: 1 }, statut_disponibilite: 'en_ligne' } })
+          await tx.vehicule.update({ where: { id_vehicule: affectation.id_vehicule }, data: { statut: 'disponible' } })
           await tx.passager.updateMany({
             where: { reservation: { some: { id_trajet: id, statut: { not: 'annule' } } } },
             data: { nb_courses_effectuees: { increment: 1 } }
@@ -403,6 +412,13 @@ const TrajetController = {
               id_objet_lie: id,
             }))
           })
+        }
+        if (trajet.statut === 'en_cours') {
+          const affectation = await tx.affectation_vehicule.findUnique({ where: { id_affectation: trajet.id_affectation } })
+          if (affectation) {
+            await tx.chauffeur.update({ where: { id_chauffeur: affectation.id_chauffeur }, data: { statut_disponibilite: 'en_ligne' } })
+            await tx.vehicule.update({ where: { id_vehicule: affectation.id_vehicule }, data: { statut: 'disponible' } })
+          }
         }
         return t
       })

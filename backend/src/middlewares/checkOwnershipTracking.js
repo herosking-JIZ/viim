@@ -1,6 +1,6 @@
 
 // Middleware spécifique pour tracking
-const prisma = require('../config/db');
+const { prisma } = require('../config/db');
 const checkOwnershipTracking = async (req, res, next) => {
     try {
         const userId = req.user.id_utilisateur;

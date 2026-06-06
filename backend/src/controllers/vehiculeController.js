@@ -3,6 +3,7 @@
  */
 
 const { prisma } = require('../config/db');
+const { enregistrerPosition } = require('../services/tracking.service');
 
 const VehiculeController = {
 
@@ -180,26 +181,7 @@ const VehiculeController = {
         return res.status(400).json({ success: false, message: 'Latitude et longitude requises.' });
       }
 
-      await prisma.$transaction([
-        // Mettre à jour la position actuelle sur le véhicule
-        prisma.vehicule.update({
-          where: { id_vehicule: id },
-          data: {
-            latitude_actuelle:  parseFloat(latitude),
-            longitude_actuelle: parseFloat(longitude),
-          }
-        }),
-        // Enregistrer dans l'historique de tracking
-        prisma.tracking_vehicule.create({
-          data: {
-            id_vehicule: id,
-            latitude:    parseFloat(latitude),
-            longitude:   parseFloat(longitude),
-            vitesse:     vitesse ? parseInt(vitesse) : null,
-            cap:         cap     ? parseInt(cap)     : null,
-          }
-        })
-      ]);
+      await enregistrerPosition(id, { latitude, longitude, vitesse, cap });
 
       return res.status(200).json({ success: true, message: 'Position mise à jour.' });
     } catch (error) {

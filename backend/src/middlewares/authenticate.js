@@ -1,10 +1,11 @@
 /**
- * MIDDLEWARES/AUTHENTICATE.JS — Middleware d'authentification principal
- * Ré-exporte le middleware Keycloak pour compatibilité
+ * MIDDLEWARES/AUTHENTICATE.JS
+ * Alias principal pour le middleware d'authentification
+ * Pointe vers keycloakAuth (validation JWKS/RS256 sûre)
  */
 
-const { authenticateKeycloak } = require('./authenticateKeycloak');
+const { keycloakAuth } = require('./keycloakAuth');
 
 module.exports = {
-  authenticate: authenticateKeycloak
+  authenticate: keycloakAuth
 };

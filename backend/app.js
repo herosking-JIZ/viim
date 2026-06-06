@@ -8,6 +8,7 @@ const { connectDB, disconnectDB } = require('./src/config/db');
 const route = require('./src/routes/index');
 const requestLogger = require('./src/middlewares/requestLogger');
 const { cleanupExpiredResetTokens } = require('./src/jobs/cleanupExpiredResetTokens');
+const { cleanupTrackingVehicule } = require('./src/jobs/cleanupTrackingVehicule');
 
 const app = express();
 app.set('etag', false);
@@ -27,6 +28,15 @@ setInterval(() => {
         }));
     });
 }, 60 * 60 * 1000);
+
+setInterval(() => {
+    cleanupTrackingVehicule().catch((error) => {
+        console.error(JSON.stringify({
+            event: 'cleanup_tracking_vehicule_failed',
+            error: error.message
+        }));
+    });
+}, 6 * 60 * 60 * 1000);
 
 // --- MIDDLEWARES DE SÉCURITÉ ---
 app.use(helmet());
