@@ -64,9 +64,8 @@ services:
       KEYCLOAK_URL: http://keycloak:8080
       KEYCLOAK_REALM: ndjigi
       KEYCLOAK_CLIENT_ID: ndjigi-backend
-      KEYCLOAK_CLIENT_SECRET: W4HZH0Wf8TnGUjv6E2XMOrAl2hlXTzlM
-      KEYCLOAK_ALLOWED_ISSUERS: http://192.168.11.104:8080/realms/ndjigi,http://10.3.3.49:8080/realms/ndjigi,http://10.0.2.2:8080/realms/ndjigi,http://localhost:8080/realms/ndjigi
-
+      KEYCLOAK_CLIENT_SECRET: cfJxRSCZ4TstC3g51jyJfSENHxlgycic
+      KEYCLOAK_ALLOWED_ISSUERS: http://keycloak:8080/realms/ndjigi,http://192.168.11.104:8080/realms/ndjigi,http://10.3.3.49:8080/realms/ndjigi,http://10.0.2.2:8080/realms/ndjigi,http://localhost:8080/realms/ndjigi
       # JWT Configuration (rétrocompatibilité)
       JWT_SECRET: change_this_secret_key
       JWT_REFRESH_SECRET: change_this_refresh_secret

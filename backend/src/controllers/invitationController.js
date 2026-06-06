@@ -88,36 +88,57 @@ const InvitationController = {
       }
 
       // 1️⃣ Sync password to Keycloak (source of truth for authentication)
-      if (user.keycloak_id) {
-        try {
-          await keycloakService.adminAPI.users.resetPassword({
-            realm: process.env.KEYCLOAK_REALM,
-            id: user.keycloak_id,
-            credential: {
-              temporary: false,
-              type: 'password',
-              value: nouveau_mot_de_passe
-            }
-          })
-          console.log(JSON.stringify({
-            event: 'keycloak_password_reset',
-            user_id: user.id_utilisateur,
-            keycloak_id: user.keycloak_id,
-            timestamp: new Date().toISOString()
-          }))
-        } catch (kcError) {
-          console.error(JSON.stringify({
-            event: 'keycloak_password_reset_failed',
-            user_id: user.id_utilisateur,
-            keycloak_id: user.keycloak_id,
-            error: kcError.message,
-            timestamp: new Date().toISOString()
-          }))
-          // Non-blocking: log the error but continue with local password storage
-          // User can use Keycloak's reset password flow if this fails
-        }
-      }
 
+      // 1️⃣ Sync password to Keycloak (source of truth for authentication)
+if (user.keycloak_id) {
+  try {
+    await keycloakService.adminAPI.users.resetPassword({
+      realm: process.env.KEYCLOAK_REALM,
+      id: user.keycloak_id,
+      credential: {
+        temporary: false,
+        type: 'password',
+        value: nouveau_mot_de_passe
+      }
+    })
+
+    // ✅ Lever les required actions satisfaites par CE flow (gestionnaire/admin)
+    const kcUser = await keycloakService.adminAPI.users.findOne({
+      realm: process.env.KEYCLOAK_REALM,
+      id: user.keycloak_id
+    })
+
+    const actionsResolvedByThisFlow = ['UPDATE_PASSWORD', 'VERIFY_EMAIL', 'TERMS_AND_CONDITIONS']
+    const remainingActions = (kcUser.requiredActions || []).filter(
+      a => !actionsResolvedByThisFlow.includes(a)
+    )
+
+    await keycloakService.adminAPI.users.update(
+      { realm: process.env.KEYCLOAK_REALM, id: user.keycloak_id },
+      {
+        enabled: true,
+        emailVerified: true,
+        requiredActions: remainingActions
+      }
+    )
+
+    console.log(JSON.stringify({
+      event: 'keycloak_password_reset',
+      user_id: user.id_utilisateur,
+      keycloak_id: user.keycloak_id,
+      timestamp: new Date().toISOString()
+    }))
+  } catch (kcError) {
+    console.error(JSON.stringify({
+      event: 'keycloak_password_reset_failed',
+      user_id: user.id_utilisateur,
+      keycloak_id: user.keycloak_id,
+      error: kcError.message,
+      timestamp: new Date().toISOString()
+    }))
+    // Non-blocking: log the error but continue with local password storage
+  }
+}
       // 2️⃣ Hash and store password locally (for audit/fallback)
       const hashedPassword = await bcrypt.hash(nouveau_mot_de_passe, 10)
 
