@@ -28,6 +28,7 @@ final sharedPreferencesProvider = FutureProvider<SharedPreferences>((ref) async 
 final apiServiceProvider = Provider<ApiService>((ref) {
   final storage = ref.watch(secureStorageProvider);
   final config = ref.watch(appConfigProvider);
+
   return ApiService(storage: storage, config: config);
 });
 

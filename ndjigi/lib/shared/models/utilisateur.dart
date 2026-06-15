@@ -12,6 +12,8 @@ class Utilisateur with _$Utilisateur {
     String? prenom,
     String? nom,
     @JsonKey(name: 'numero_telephone') String? numeroTelephone,
+    @JsonKey(name: 'photo_profil') String? photoProfil,
+    @JsonKey(name: 'adresse') String? adresse,
     @Default([]) List<String> roles,
     @JsonKey(name: 'statut_compte') @Default('actif') String statutCompte,
     @JsonKey(name: 'deux_fa_activee') @Default(false) bool deuxFaActivee,

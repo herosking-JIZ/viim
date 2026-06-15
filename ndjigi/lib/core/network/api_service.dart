@@ -1,11 +1,13 @@
 import 'package:dio/dio.dart';
 import '../config/app_config.dart';
 import '../storage/secure_storage.dart';
+import '../managers/auth_failure_manager.dart';
 
 class ApiService {
   late final Dio _dio;
   final SecureStorage _storage;
   final AppConfig _config;
+  bool _isRefreshing = false;
 
   ApiService({
     required SecureStorage storage,
@@ -57,8 +59,16 @@ class ApiService {
         },
         onError: (error, handler) async {
           if (error.response?.statusCode == 401) {
+            // Anti-réentrance: if refresh already in flight, reject immediately
+            if (_isRefreshing) {
+              await _storage.clearTokens();
+              AuthFailureManager.instance.notifyAuthFailed();
+              return handler.reject(error);
+            }
+
             final refreshToken = await _storage.getRefreshToken();
             if (refreshToken != null && refreshToken.isNotEmpty) {
+              _isRefreshing = true;
               try {
                 final response = await _refreshToken(refreshToken);
                 final newAccessToken = response.data['access_token'] as String?;
@@ -84,12 +94,17 @@ class ApiService {
                   ));
                 }
               } catch (_) {
-                // Refresh failed, logout
+                // Refresh failed, logout and reject error (not next)
                 await _storage.clearTokens();
-                return handler.next(error);
+                AuthFailureManager.instance.notifyAuthFailed();
+                return handler.reject(error);
+              } finally {
+                _isRefreshing = false;
               }
             } else {
+              // No refresh token available, logout
               await _storage.clearTokens();
+              AuthFailureManager.instance.notifyAuthFailed();
             }
           }
           return handler.next(error);

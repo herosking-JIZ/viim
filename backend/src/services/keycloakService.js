@@ -13,8 +13,9 @@
 
 const axios = require('axios');
 const { URLSearchParams } = require('url');
+const jwt = require('jsonwebtoken');
 const KcAdminClient = require('@keycloak/keycloak-admin-client').default;
-const { KEYCLOAK_URL, KEYCLOAK_REALM, KEYCLOAK_CLIENT_ID } = require('../config/keycloak');
+const { KEYCLOAK_URL, KEYCLOAK_REALM, KEYCLOAK_CLIENT_ID, KEYCLOAK_ALLOWED_ISSUERS } = require('../config/keycloak');
 
 const KEYCLOAK_CLIENT_SECRET = process.env.KEYCLOAK_CLIENT_SECRET || '';
 const KEYCLOAK_ADMIN_CLIENT_ID = process.env.KEYCLOAK_ADMIN_CLIENT_ID || KEYCLOAK_CLIENT_ID;
@@ -134,11 +135,30 @@ async function login(email, password) {
 
 /**
  * Refresh access token
+ * Dérive l'endpoint token à partir de l'issuer du refresh_token (allowlist security)
  * @param {string} refresh_token
  * @returns {object} { access_token, refresh_token, expires_in, token_type }
  */
 async function refresh(refresh_token) {
   try {
+    // Décoder le refresh_token pour lire son issuer (sans vérifier la signature)
+    const decoded = jwt.decode(refresh_token, { complete: false });
+    if (!decoded || !decoded.iss) {
+      throw new Error('Refresh token mal formé (iss manquant)');
+    }
+
+    const tokenIssuer = decoded.iss;
+
+    // Vérifier que l'issuer est dans la liste des issuers acceptables
+    const allowedIssuers = KEYCLOAK_ALLOWED_ISSUERS || [KEYCLOAK_URL];
+    if (!allowedIssuers.includes(tokenIssuer)) {
+      throw new Error(`Invalid token issuer: "${tokenIssuer}" not in allowed list`);
+    }
+
+    // Construire l'endpoint token à partir de l'issuer du token
+    // Format issuer: "http://192.168.11.104:8080/realms/ndjigi" ou "http://keycloak:8080/realms/ndjigi"
+    const tokenEndpointUrl = `${tokenIssuer}/protocol/openid-connect/token`;
+
     const auth = Buffer.from(`${KEYCLOAK_CLIENT_ID}:${KEYCLOAK_CLIENT_SECRET}`).toString('base64');
     const params = new URLSearchParams();
 
@@ -146,7 +166,8 @@ async function refresh(refresh_token) {
     params.append('refresh_token', refresh_token);
     params.append('scope', 'openid profile email');
 
-    const response = await keycloakClient.post('/token', params, {
+    const response = await axios.post(tokenEndpointUrl, params, {
+      timeout: 5000,
       headers: {
         Authorization: `Basic ${auth}`,
         'Content-Type': 'application/x-www-form-urlencoded'

@@ -4,6 +4,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/config/app_config.dart';
 import '../core/theme/app_theme.dart';
+import '../core/managers/auth_failure_manager.dart';
+import '../features/auth/presentation/providers/auth_provider.dart';
 import 'router/app_router.dart';
 
 class App extends ConsumerStatefulWidget {
@@ -19,6 +21,12 @@ class _AppState extends ConsumerState<App> {
   @override
   void initState() {
     super.initState();
+
+    // Register auth failure callback to invalidate authProvider when refresh fails
+    AuthFailureManager.instance.setOnAuthFailedCallback(() {
+      ref.invalidate(authProvider);
+    });
+
     Future.microtask(() => _initDeepLinks());
   }
 

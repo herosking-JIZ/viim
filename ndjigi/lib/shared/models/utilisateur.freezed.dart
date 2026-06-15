@@ -28,6 +28,10 @@ mixin _$Utilisateur {
   String? get nom => throw _privateConstructorUsedError;
   @JsonKey(name: 'numero_telephone')
   String? get numeroTelephone => throw _privateConstructorUsedError;
+  @JsonKey(name: 'photo_profil')
+  String? get photoProfil => throw _privateConstructorUsedError;
+  @JsonKey(name: 'adresse')
+  String? get adresse => throw _privateConstructorUsedError;
   List<String> get roles => throw _privateConstructorUsedError;
   @JsonKey(name: 'statut_compte')
   String get statutCompte => throw _privateConstructorUsedError;
@@ -57,6 +61,8 @@ abstract class $UtilisateurCopyWith<$Res> {
     String? prenom,
     String? nom,
     @JsonKey(name: 'numero_telephone') String? numeroTelephone,
+    @JsonKey(name: 'photo_profil') String? photoProfil,
+    @JsonKey(name: 'adresse') String? adresse,
     List<String> roles,
     @JsonKey(name: 'statut_compte') String statutCompte,
     @JsonKey(name: 'deux_fa_activee') bool deuxFaActivee,
@@ -83,6 +89,8 @@ class _$UtilisateurCopyWithImpl<$Res, $Val extends Utilisateur>
     Object? prenom = freezed,
     Object? nom = freezed,
     Object? numeroTelephone = freezed,
+    Object? photoProfil = freezed,
+    Object? adresse = freezed,
     Object? roles = null,
     Object? statutCompte = null,
     Object? deuxFaActivee = null,
@@ -108,6 +116,14 @@ class _$UtilisateurCopyWithImpl<$Res, $Val extends Utilisateur>
             numeroTelephone: freezed == numeroTelephone
                 ? _value.numeroTelephone
                 : numeroTelephone // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            photoProfil: freezed == photoProfil
+                ? _value.photoProfil
+                : photoProfil // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            adresse: freezed == adresse
+                ? _value.adresse
+                : adresse // ignore: cast_nullable_to_non_nullable
                       as String?,
             roles: null == roles
                 ? _value.roles
@@ -142,6 +158,8 @@ abstract class _$$UtilisateurImplCopyWith<$Res>
     String? prenom,
     String? nom,
     @JsonKey(name: 'numero_telephone') String? numeroTelephone,
+    @JsonKey(name: 'photo_profil') String? photoProfil,
+    @JsonKey(name: 'adresse') String? adresse,
     List<String> roles,
     @JsonKey(name: 'statut_compte') String statutCompte,
     @JsonKey(name: 'deux_fa_activee') bool deuxFaActivee,
@@ -167,6 +185,8 @@ class __$$UtilisateurImplCopyWithImpl<$Res>
     Object? prenom = freezed,
     Object? nom = freezed,
     Object? numeroTelephone = freezed,
+    Object? photoProfil = freezed,
+    Object? adresse = freezed,
     Object? roles = null,
     Object? statutCompte = null,
     Object? deuxFaActivee = null,
@@ -192,6 +212,14 @@ class __$$UtilisateurImplCopyWithImpl<$Res>
         numeroTelephone: freezed == numeroTelephone
             ? _value.numeroTelephone
             : numeroTelephone // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        photoProfil: freezed == photoProfil
+            ? _value.photoProfil
+            : photoProfil // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        adresse: freezed == adresse
+            ? _value.adresse
+            : adresse // ignore: cast_nullable_to_non_nullable
                   as String?,
         roles: null == roles
             ? _value._roles
@@ -219,6 +247,8 @@ class _$UtilisateurImpl implements _Utilisateur {
     this.prenom,
     this.nom,
     @JsonKey(name: 'numero_telephone') this.numeroTelephone,
+    @JsonKey(name: 'photo_profil') this.photoProfil,
+    @JsonKey(name: 'adresse') this.adresse,
     final List<String> roles = const [],
     @JsonKey(name: 'statut_compte') this.statutCompte = 'actif',
     @JsonKey(name: 'deux_fa_activee') this.deuxFaActivee = false,
@@ -239,6 +269,12 @@ class _$UtilisateurImpl implements _Utilisateur {
   @override
   @JsonKey(name: 'numero_telephone')
   final String? numeroTelephone;
+  @override
+  @JsonKey(name: 'photo_profil')
+  final String? photoProfil;
+  @override
+  @JsonKey(name: 'adresse')
+  final String? adresse;
   final List<String> _roles;
   @override
   @JsonKey()
@@ -257,7 +293,7 @@ class _$UtilisateurImpl implements _Utilisateur {
 
   @override
   String toString() {
-    return 'Utilisateur(idUtilisateur: $idUtilisateur, email: $email, prenom: $prenom, nom: $nom, numeroTelephone: $numeroTelephone, roles: $roles, statutCompte: $statutCompte, deuxFaActivee: $deuxFaActivee)';
+    return 'Utilisateur(idUtilisateur: $idUtilisateur, email: $email, prenom: $prenom, nom: $nom, numeroTelephone: $numeroTelephone, photoProfil: $photoProfil, adresse: $adresse, roles: $roles, statutCompte: $statutCompte, deuxFaActivee: $deuxFaActivee)';
   }
 
   @override
@@ -272,6 +308,9 @@ class _$UtilisateurImpl implements _Utilisateur {
             (identical(other.nom, nom) || other.nom == nom) &&
             (identical(other.numeroTelephone, numeroTelephone) ||
                 other.numeroTelephone == numeroTelephone) &&
+            (identical(other.photoProfil, photoProfil) ||
+                other.photoProfil == photoProfil) &&
+            (identical(other.adresse, adresse) || other.adresse == adresse) &&
             const DeepCollectionEquality().equals(other._roles, _roles) &&
             (identical(other.statutCompte, statutCompte) ||
                 other.statutCompte == statutCompte) &&
@@ -288,6 +327,8 @@ class _$UtilisateurImpl implements _Utilisateur {
     prenom,
     nom,
     numeroTelephone,
+    photoProfil,
+    adresse,
     const DeepCollectionEquality().hash(_roles),
     statutCompte,
     deuxFaActivee,
@@ -314,6 +355,8 @@ abstract class _Utilisateur implements Utilisateur {
     final String? prenom,
     final String? nom,
     @JsonKey(name: 'numero_telephone') final String? numeroTelephone,
+    @JsonKey(name: 'photo_profil') final String? photoProfil,
+    @JsonKey(name: 'adresse') final String? adresse,
     final List<String> roles,
     @JsonKey(name: 'statut_compte') final String statutCompte,
     @JsonKey(name: 'deux_fa_activee') final bool deuxFaActivee,
@@ -334,6 +377,12 @@ abstract class _Utilisateur implements Utilisateur {
   @override
   @JsonKey(name: 'numero_telephone')
   String? get numeroTelephone;
+  @override
+  @JsonKey(name: 'photo_profil')
+  String? get photoProfil;
+  @override
+  @JsonKey(name: 'adresse')
+  String? get adresse;
   @override
   List<String> get roles;
   @override

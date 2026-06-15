@@ -14,6 +14,7 @@ const passagerRoute = require('./passagerRoute');
 const promoRoute = require('./promoRoute');
 const proprietaireRoute = require('./proprietaireRoute');
 const reservationRoute = require('./reservationRoute');
+const conversationRoute = require('./conversationRoute');
 const utilisateurRoute = require('./utilisateurRoute');
 const gestionnaireRoute = require('./gestionnaireRoute');
 const zoneTarifaireRoute = require('./zoneTarifaireRoute');
@@ -71,6 +72,7 @@ router.use('/pasager', passagerRoute);
 router.use('/code-promo', promoRoute);
 router.use('/proprietaire', proprietaireRoute);
 router.use('/reservation', reservationRoute);
+router.use('/conversations', conversationRoute);
 router.use('/utilisateurs', utilisateurRoute);
 router.use('/users', utilisateurRoute); // Alias pour compatibilité Flutter
 router.use('/admin/gestionnaires', gestionnaireRoute);

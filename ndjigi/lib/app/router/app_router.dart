@@ -14,6 +14,13 @@ import '../../features/auth/presentation/screens/phone_collection_screen.dart';
 import '../../features/home/presentation/screens/home_passager_screen.dart';
 import '../../features/home/presentation/screens/home_chauffeur_screen.dart';
 import '../../features/home/presentation/screens/home_proprietaire_screen.dart';
+import '../../features/profil/presentation/screens/profil_hub_screen.dart';
+import '../../features/profil/presentation/screens/mes_informations_screen.dart';
+import '../../features/profil/presentation/screens/mes_adresses_screen.dart';
+import '../../features/profil/presentation/screens/portefeuille_screen.dart';
+import '../../features/profil/presentation/screens/securite_contacts_screen.dart';
+import '../../features/profil/presentation/screens/parametres_screen.dart';
+import '../../features/profil/presentation/screens/devenir_partenaire_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final authListenable = ValueNotifier<AuthState>(ref.read(authProvider));
@@ -130,6 +137,43 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/home/proprietaire',
         name: 'home-proprietaire',
         builder: (context, state) => const HomeProprietaireScreen(),
+      ),
+      GoRoute(
+        path: '/profil',
+        name: 'profil',
+        builder: (context, state) => const ProfilHubScreen(),
+        routes: [
+          GoRoute(
+            path: 'mes-informations',
+            name: 'profil-mes-informations',
+            builder: (context, state) => const MesInformationsScreen(),
+          ),
+          GoRoute(
+            path: 'mes-adresses',
+            name: 'profil-mes-adresses',
+            builder: (context, state) => const MesAdressesScreen(),
+          ),
+          GoRoute(
+            path: 'portefeuille',
+            name: 'profil-portefeuille',
+            builder: (context, state) => const PortefeuilleScreen(),
+          ),
+          GoRoute(
+            path: 'securite-contacts',
+            name: 'profil-securite-contacts',
+            builder: (context, state) => const SecuriteContactsScreen(),
+          ),
+          GoRoute(
+            path: 'parametres',
+            name: 'profil-parametres',
+            builder: (context, state) => const ParametresScreen(),
+          ),
+          GoRoute(
+            path: 'devenir-partenaire',
+            name: 'profil-devenir-partenaire',
+            builder: (context, state) => const DevenirPartennaireScreen(),
+          ),
+        ],
       ),
     ],
   );

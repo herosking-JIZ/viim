@@ -1,5 +1,6 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
+const http = require('http');
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
@@ -9,6 +10,7 @@ const route = require('./src/routes/index');
 const requestLogger = require('./src/middlewares/requestLogger');
 const { cleanupExpiredResetTokens } = require('./src/jobs/cleanupExpiredResetTokens');
 const { cleanupTrackingVehicule } = require('./src/jobs/cleanupTrackingVehicule');
+const { initSocket } = require('./src/socket');
 
 const app = express();
 app.set('etag', false);
@@ -176,7 +178,13 @@ app.get('/health', (req, res) => {
     });
 });
 
-const server = app.listen(PORT, () => {
+// --- SERVEUR HTTP + SOCKET.IO ---
+const server = http.createServer(app);
+
+// Initialiser Socket.io (Phase 1: authentification uniquement)
+const io = initSocket(server);
+
+server.listen(PORT, () => {
     console.log(`🚀 Serveur N'DJIGI à l'écoute sur le port : ${PORT}`);
 });
 

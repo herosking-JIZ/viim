@@ -13,6 +13,8 @@ _$UtilisateurImpl _$$UtilisateurImplFromJson(Map<String, dynamic> json) =>
       prenom: json['prenom'] as String?,
       nom: json['nom'] as String?,
       numeroTelephone: json['numero_telephone'] as String?,
+      photoProfil: json['photo_profil'] as String?,
+      adresse: json['adresse'] as String?,
       roles:
           (json['roles'] as List<dynamic>?)?.map((e) => e as String).toList() ??
           const [],
@@ -27,6 +29,8 @@ Map<String, dynamic> _$$UtilisateurImplToJson(_$UtilisateurImpl instance) =>
       'prenom': instance.prenom,
       'nom': instance.nom,
       'numero_telephone': instance.numeroTelephone,
+      'photo_profil': instance.photoProfil,
+      'adresse': instance.adresse,
       'roles': instance.roles,
       'statut_compte': instance.statutCompte,
       'deux_fa_activee': instance.deuxFaActivee,
