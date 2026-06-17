@@ -5,7 +5,7 @@ const { can, authorize } = require('../middlewares/authorize');
 const joiValidate = require('../middlewares/validate.middleware');
 const upload = require('../middlewares/documentUpload.middleware');
 const uploadRateLimiter = require('../middlewares/uploadRateLimit');
-const { documentUploadSchema } = require('../validators/gestionnaireValidation');
+const { partnerDocumentUploadSchema } = require('../validators/gestionnaireValidation');
 
 const router = express.Router();
 
@@ -18,7 +18,7 @@ router.post(
   '/',
   uploadRateLimiter,
   upload.single('fichier'),
-  joiValidate({ body: documentUploadSchema }),
+  joiValidate({ body: partnerDocumentUploadSchema }),
   can('profil:modifier'),
   documentController.uploadDocument
 )

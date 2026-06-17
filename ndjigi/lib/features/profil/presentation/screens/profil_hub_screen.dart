@@ -15,13 +15,22 @@ class ProfilHubScreen extends ConsumerWidget {
     final authState = ref.watch(authProvider);
     final user = authState.user;
 
+    // Role-gating pour la section partenaire
+    final roles = authState.availableRoles;
+    final canExtend = !roles.contains('chauffeur') || !roles.contains('proprietaire');
+    final partnerTileTitle = roles.contains('chauffeur')
+        ? 'Devenir propriétaire'
+        : roles.contains('proprietaire')
+            ? 'Devenir chauffeur'
+            : 'Devenir chauffeur / propriétaire';
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: AppColors.surface,
       appBar: AppBar(
         title: const Text('Mon profil'),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.background,
       ),
       body: user == null
           ? const Center(child: CircularProgressIndicator())
@@ -51,7 +60,7 @@ class ProfilHubScreen extends ConsumerWidget {
                         NavTile(
                           icon: Icons.account_balance_wallet,
                           title: 'Portefeuille',
-                          iconColor: Colors.green,
+                          iconColor: AppColors.success,
                           onTap: () => context.push('/profil/portefeuille'),
                         ),
                       ],
@@ -64,22 +73,24 @@ class ProfilHubScreen extends ConsumerWidget {
                     child: NavTile(
                       icon: Icons.shield_outlined,
                       title: 'Sécurité & contacts',
-                      iconColor: Colors.orange,
+                      iconColor: AppColors.warning,
                       onTap: () => context.push('/profil/securite-contacts'),
                     ),
                   ),
-                  const SizedBox(height: 32),
-                  _buildSectionTitle('Partenaire'),
-                  const SizedBox(height: 12),
-                  SectionCard(
-                    child: NavTile(
-                      icon: Icons.directions_car_outlined,
-                      title: 'Devenir chauffeur / propriétaire',
-                      iconColor: Colors.blue,
-                      onTap: () => context.push('/profil/devenir-partenaire'),
+                  if (canExtend) ...[
+                    const SizedBox(height: 32),
+                    _buildSectionTitle('Partenaire'),
+                    const SizedBox(height: 12),
+                    SectionCard(
+                      child: NavTile(
+                        icon: Icons.directions_car_outlined,
+                        title: partnerTileTitle,
+                        iconColor: AppColors.secondary,
+                        onTap: () => context.push('/profil/devenir-partenaire'),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 32),
+                    const SizedBox(height: 32),
+                  ],
                   _buildSectionTitle('Préférences'),
                   const SizedBox(height: 12),
                   SectionCard(
@@ -131,7 +142,7 @@ class ProfilHubScreen extends ConsumerWidget {
             height: 72,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.primary.withValues(alpha: 0.2),
+              color: AppColors.primary.withValues(alpha: 0.12),
             ),
             child: user.photoProfil != null
                 ? ClipOval(
@@ -157,7 +168,7 @@ class ProfilHubScreen extends ConsumerWidget {
           // Téléphone
           Text(
             user.numeroTelephone ?? '-',
-            style: AppTextStyles.bodyMedium.copyWith(color: Colors.grey),
+            style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 12),
@@ -183,7 +194,7 @@ class ProfilHubScreen extends ConsumerWidget {
       alignment: Alignment.centerLeft,
       child: Text(
         title,
-        style: AppTextStyles.labelLarge.copyWith(color: Colors.grey.shade600),
+        style: AppTextStyles.labelLarge.copyWith(color: AppColors.textSecondary),
       ),
     );
   }

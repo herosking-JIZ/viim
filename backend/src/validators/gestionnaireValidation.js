@@ -29,6 +29,17 @@ const documentUploadSchema = Joi.object({
   type: Joi.string().valid('cnib', 'casier_judiciaire', 'photo_identite').required(),
 })
 
+// Upload document pour demande d'extension (partenaire)
+// Accepte les types: gestionnaire + partenaire (chauffeur/proprietaire)
+const partnerDocumentUploadSchema = Joi.object({
+  type: Joi.string().valid(
+    // Gestionnaire
+    'cnib', 'casier_judiciaire', 'photo_identite',
+    // Partenaire (chauffeur + proprietaire)
+    'permis-de-conduite', 'carte_grise', 'assurance', 'cni', 'contrat-nndjigi'
+  ).required(),
+})
+
 // Renvoi invitation
 const resendInvitationSchema = Joi.object({
   id_utilisateur: Joi.string().uuid().required(),
@@ -38,5 +49,6 @@ module.exports = {
   createGestionnaireSchema,
   firstConnectionSchema,
   documentUploadSchema,
+  partnerDocumentUploadSchema,
   resendInvitationSchema,
 }
