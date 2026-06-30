@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../../../core/config/app_config.dart';
 import '../providers/auth_provider.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
@@ -14,20 +13,19 @@ class RegisterScreen extends ConsumerStatefulWidget {
 
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   void _handleRegister() async {
-    final keycloakUrl = AppConfig.instance.keycloakUrl;
-    final realm = AppConfig.instance.keycloakRealm;
-    final clientId = AppConfig.instance.keycloakClientId;
-    final redirectUri = AppConfig.instance.redirectUri;
+    print('🔵 NDJIGI-AUTH: [REGISTER-SCREEN] bouton cliqué → appel startKeycloakRegister');
+    final registerFlow = await ref.read(authProvider.notifier).startKeycloakRegister();
 
-    final registerUrl = Uri.parse(
-      '$keycloakUrl/realms/$realm/protocol/openid-connect/registrations'
-      '?client_id=$clientId'
-      '&response_type=code'
-      '&scope=openid profile email phone'
-      '&redirect_uri=${Uri.encodeComponent(redirectUri)}',
+    if (registerFlow == null || registerFlow.authUrl == null) {
+      print('🔵 NDJIGI-AUTH: [REGISTER-SCREEN] startKeycloakRegister a retourné null');
+      return;
+    }
+
+    print('🔵 NDJIGI-AUTH: [REGISTER-SCREEN] registerUrl obtenue, ouverture browser');
+    await launchUrl(
+      Uri.parse(registerFlow.authUrl!),
+      mode: LaunchMode.externalApplication,
     );
-
-    await launchUrl(registerUrl, mode: LaunchMode.externalApplication);
   }
 
   @override

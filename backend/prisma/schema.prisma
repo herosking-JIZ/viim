@@ -42,8 +42,12 @@ enum NomCategorie {
 }
 
 enum typeDocument {
-  photos
-  documents_administratifs
+  permis_conduire
+  carte_grise
+  assurance
+  piece_identite
+  justificatif_domicile
+  contrat_ndjigi
 }
 
 enum TypeService {
@@ -118,6 +122,10 @@ enum type_maintenance {
   electricite
   carrosserie
 }
+enum type_extension {
+  chauffeur
+  proprietaire
+}
 
 enum type_reduction {
   fixe
@@ -169,6 +177,11 @@ enum remboursement_statut {
   traite
   rejete
 }
+enum statut_extension {
+  en_attente
+  accepte
+  refuse
+}
 
 model avis {
   id_avis                                     String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -219,11 +232,20 @@ model code_promo {
   actif                  Boolean             @default(true)
   utilisation_promo      utilisation_promo[]
 }
+model demande_extension {
+  id_demande_extension String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  extension_type       type_extension
+  id_utilisateur       String      @db.Uuid
+  statut               statut_extension @default(en_attente)
+  documents            document[]
+  utilisateur           utilisateur @relation(fields: [id_utilisateur], references: [id_utilisateur], onDelete: NoAction, onUpdate: NoAction) 
+}
 
 model document {
   id_document         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   id_utilisateur      String        @db.Uuid
   type                String        @db.VarChar(40)
+  id_demande_extension String?       @db.Uuid
   url_fichier         String
   title               String?       @db.VarChar(200)
   fileKey             String?       @unique // YYYY-MM/{userId}/{uuid}{ext}
@@ -240,7 +262,7 @@ model document {
   deletedAt           DateTime?     @db.Timestamp(6) // Soft delete
   type_document       typeDocument?
   utilisateur         utilisateur   @relation(fields: [id_utilisateur], references: [id_utilisateur], onDelete: NoAction, onUpdate: NoAction)
-
+  demande_extension     demande_extension? @relation(fields: [id_demande_extension], references: [id_demande_extension], onDelete: NoAction, onUpdate: NoAction)  
   @@index([id_utilisateur, deletedAt], map: "idx_document_userid_deletedat")
   @@index([storageHash, id_utilisateur], map: "idx_document_hash_userid")
   @@index([status, createdAt], map: "idx_document_status_createdat")
@@ -574,6 +596,7 @@ model utilisateur {
   photos                               photo[]
   addresses                             address[]
   contacts                              contact_de_confiance[]
+  demande_extensions                   demande_extension[]
 }
 
 model password_reset_token {
@@ -947,7 +970,7 @@ model contact_de_confiance {
   id_user      String    @db.Uuid
   nom          String    @db.VarChar(100)
   prenom       String    @db.VarChar(100)
-  country_code String    @db.VarChar(6) // +221, +33, +1, etc
+  country_code String    @db.VarChar(6)
   phone        String    @db.VarChar(20)
   relation     relation
   createdAt    DateTime  @default(now()) @db.Timestamp(6)

@@ -25,7 +25,9 @@ mixin _$Address {
   String get idAddress => throw _privateConstructorUsedError;
   String get label => throw _privateConstructorUsedError;
   String get address => throw _privateConstructorUsedError;
+  @JsonKey(fromJson: _parseDouble)
   double get latitude => throw _privateConstructorUsedError;
+  @JsonKey(fromJson: _parseDouble)
   double get longitude => throw _privateConstructorUsedError;
   bool get isfavorite => throw _privateConstructorUsedError;
   @JsonKey(name: 'createdAt')
@@ -51,8 +53,8 @@ abstract class $AddressCopyWith<$Res> {
     @JsonKey(name: 'id_address') String idAddress,
     String label,
     String address,
-    double latitude,
-    double longitude,
+    @JsonKey(fromJson: _parseDouble) double latitude,
+    @JsonKey(fromJson: _parseDouble) double longitude,
     bool isfavorite,
     @JsonKey(name: 'createdAt') DateTime? createdAt,
     @JsonKey(name: 'updatedAt') DateTime? updatedAt,
@@ -135,8 +137,8 @@ abstract class _$$AddressImplCopyWith<$Res> implements $AddressCopyWith<$Res> {
     @JsonKey(name: 'id_address') String idAddress,
     String label,
     String address,
-    double latitude,
-    double longitude,
+    @JsonKey(fromJson: _parseDouble) double latitude,
+    @JsonKey(fromJson: _parseDouble) double longitude,
     bool isfavorite,
     @JsonKey(name: 'createdAt') DateTime? createdAt,
     @JsonKey(name: 'updatedAt') DateTime? updatedAt,
@@ -212,8 +214,8 @@ class _$AddressImpl implements _Address {
     @JsonKey(name: 'id_address') required this.idAddress,
     required this.label,
     required this.address,
-    required this.latitude,
-    required this.longitude,
+    @JsonKey(fromJson: _parseDouble) required this.latitude,
+    @JsonKey(fromJson: _parseDouble) required this.longitude,
     this.isfavorite = false,
     @JsonKey(name: 'createdAt') this.createdAt,
     @JsonKey(name: 'updatedAt') this.updatedAt,
@@ -230,8 +232,10 @@ class _$AddressImpl implements _Address {
   @override
   final String address;
   @override
+  @JsonKey(fromJson: _parseDouble)
   final double latitude;
   @override
+  @JsonKey(fromJson: _parseDouble)
   final double longitude;
   @override
   @JsonKey()
@@ -302,8 +306,8 @@ abstract class _Address implements Address {
     @JsonKey(name: 'id_address') required final String idAddress,
     required final String label,
     required final String address,
-    required final double latitude,
-    required final double longitude,
+    @JsonKey(fromJson: _parseDouble) required final double latitude,
+    @JsonKey(fromJson: _parseDouble) required final double longitude,
     final bool isfavorite,
     @JsonKey(name: 'createdAt') final DateTime? createdAt,
     @JsonKey(name: 'updatedAt') final DateTime? updatedAt,
@@ -319,8 +323,10 @@ abstract class _Address implements Address {
   @override
   String get address;
   @override
+  @JsonKey(fromJson: _parseDouble)
   double get latitude;
   @override
+  @JsonKey(fromJson: _parseDouble)
   double get longitude;
   @override
   bool get isfavorite;

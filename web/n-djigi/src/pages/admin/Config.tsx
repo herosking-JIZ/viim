@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Trash2, Zap, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Plus, Pencil, Trash2, Zap, ChevronRight, ChevronDown, CheckCircle2, AlertCircle } from 'lucide-react'
 import { configService } from '@/services/api'
 import { useToast } from '@/hooks/useToast'
 import { formatDateShort } from '@/lib/utils'
@@ -105,7 +105,7 @@ function ZonesTab() {
 
       {modal !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setModal(null)}>
-          <div className="bg-card border border-border rounded-2xl w-full max-w-md shadow-2xl flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white dark:bg-zinc-900 border border-border rounded-2xl w-full max-w-md shadow-2xl flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 pb-4 border-b border-border/50">
               <h2 className="font-display font-bold text-lg">{isNew ? 'Nouvelle zone tarifaire' : 'Modifier la zone'}</h2>
               <p className="text-xs text-muted-foreground mt-1">Les tarifs par catégorie se configurent dans l'onglet "Tarifs"</p>
@@ -139,7 +139,7 @@ function ZonesTab() {
                 </button>
               </div>
             </div>
-            <div className="p-6 border-t border-border flex gap-3 justify-end bg-muted/10">
+            <div className="p-6 border-t border-border flex gap-3 justify-end bg-white dark:bg-zinc-900">
               <button onClick={() => setModal(null)} className="px-5 py-2.5 rounded-xl border border-border hover:bg-muted text-sm font-semibold">Annuler</button>
               <button onClick={handleSave} className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90">Enregistrer la zone</button>
             </div>
@@ -157,6 +157,7 @@ function CategoriesTab() {
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState<Partial<CategorieVehicule> | null>(null)
   const [isNew, setIsNew] = useState(false)
+  const [nomOpen, setNomOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -167,7 +168,7 @@ function CategoriesTab() {
 
   useEffect(() => { load() }, [load])
 
-  const openNew = () => { setIsNew(true); setModal({ nom: '', description: '', actif: true }) }
+  const openNew = () => { setIsNew(true); setModal({ nom: 'Economique', description: '', actif: true }) }
   const openEdit = (c: CategorieVehicule) => { setIsNew(false); setModal({ ...c }) }
 
   const handleSave = async () => {
@@ -246,27 +247,48 @@ const handleDelete = async (id: string) => {
       )}
 
       {modal !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setModal(null)}>
-          <div className="bg-card border border-border rounded-2xl w-full max-w-md shadow-2xl flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setModal(null)}>
+          <div className="bg-white dark:bg-zinc-900 border border-border rounded-2xl w-full max-w-md shadow-2xl flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 pb-4 border-b border-border/50">
               <h2 className="font-display font-bold text-lg">{isNew ? 'Nouvelle catégorie' : 'Modifier la catégorie'}</h2>
               <p className="text-xs text-muted-foreground mt-1">Les tarifs par zone se configurent dans l'onglet "Tarifs"</p>
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-5">
-              {[
-                { key: 'nom', label: 'Nom', type: 'text', placeholder: 'Ex: SUV, Luxe, Économique...' },
-                { key: 'description', label: 'Description courte', type: 'text', placeholder: 'Ex: Véhicules spacieux et climatisés' },
-              ].map(({ key, label, type, placeholder }) => (
-                <div key={key}>
-                  <label className="block text-[12px] font-bold text-foreground mb-1.5 uppercase tracking-wider">{label}</label>
-                  <input
-                    type={type} placeholder={placeholder}
-                    value={(modal as any)[key] ?? ''}
-                    onChange={(e) => setModal((m) => ({ ...m, [key]: e.target.value }))}
-                    className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-                  />
-                </div>
-              ))}
+              <div className="relative">
+                <label className="block text-[12px] font-bold text-foreground mb-1.5 uppercase tracking-wider">Nom</label>
+                <button
+                  type="button"
+                  onClick={() => setNomOpen((o) => !o)}
+                  className="w-full flex items-center justify-between rounded-xl border border-input bg-white dark:bg-zinc-800 px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                >
+                  <span>{{ Economique: 'Économique', Confort: 'Confort', Premium: 'Premium' }[modal.nom ?? 'Economique']}</span>
+                  <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${nomOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {nomOpen && (
+                  <div className="absolute z-50 mt-1 w-full rounded-xl border border-border bg-white dark:bg-zinc-800 shadow-lg overflow-hidden">
+                    {(['Economique', 'Confort', 'Premium'] as const).map((val) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => { setModal((m) => ({ ...m, nom: val })); setNomOpen(false) }}
+                        className={`w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-primary/10 transition-colors ${modal.nom === val ? 'text-primary font-bold' : ''}`}
+                      >
+                        {{ Economique: 'Économique', Confort: 'Confort', Premium: 'Premium' }[val]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="block text-[12px] font-bold text-foreground mb-1.5 uppercase tracking-wider">Description courte</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Véhicules spacieux et climatisés"
+                  value={modal.description ?? ''}
+                  onChange={(e) => setModal((m) => ({ ...m, description: e.target.value }))}
+                  className="w-full rounded-xl border border-input bg-white dark:bg-zinc-800 px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                />
+              </div>
               <div className="flex items-center justify-between p-4 bg-muted/40 rounded-2xl border border-border">
                 <div>
                   <p className="text-sm font-bold">Catégorie active</p>
@@ -280,7 +302,7 @@ const handleDelete = async (id: string) => {
                 </button>
               </div>
             </div>
-            <div className="p-6 border-t border-border flex gap-3 justify-end bg-muted/10">
+            <div className="p-6 border-t border-border flex gap-3 justify-end bg-white dark:bg-zinc-900">
               <button onClick={() => setModal(null)} className="px-5 py-2.5 rounded-xl border border-border hover:bg-muted text-sm font-semibold">Annuler</button>
               <button onClick={handleSave} className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90">Enregistrer</button>
             </div>
@@ -496,7 +518,7 @@ function TarifsTab() {
       {/* Modal de saisie des tarifs */}
       {modal !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setModal(null)}>
-          <div className="bg-card border border-border rounded-2xl w-full max-w-md shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white dark:bg-zinc-900 border border-border rounded-2xl w-full max-w-md shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 pb-4 border-b border-border/50">
               <h2 className="font-display font-bold text-lg">
                 {categories.find((c) => c.id_categorie === modal.id_categorie)?.nom}
@@ -547,7 +569,7 @@ function TarifsTab() {
               )}
             </div>
 
-            <div className="p-6 border-t border-border flex gap-3 justify-end bg-muted/10">
+            <div className="p-6 border-t border-border flex gap-3 justify-end bg-white dark:bg-zinc-900">
               <button onClick={() => setModal(null)} className="px-5 py-2.5 rounded-xl border border-border hover:bg-muted text-sm font-semibold">Annuler</button>
               <button onClick={handleSave} disabled={saving} className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-50">
                 {saving ? 'Enregistrement...' : 'Enregistrer les tarifs'}
@@ -681,7 +703,7 @@ function PromosTab() {
 
       {modal !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setModal(null)}>
-          <div className="bg-card border border-border rounded-2xl w-full max-w-md shadow-2xl animate-fade-in flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white dark:bg-zinc-900 border border-border rounded-2xl w-full max-w-md shadow-2xl animate-fade-in flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 pb-4 border-b border-border/50">
               <h2 className="font-display font-bold text-lg">{isNew ? 'Nouveau code promo' : 'Modifier le code'}</h2>
             </div>
@@ -735,7 +757,7 @@ function PromosTab() {
                 </button>
               </div>
             </div>
-            <div className="p-6 border-t border-border flex gap-3 justify-end bg-muted/10">
+            <div className="p-6 border-t border-border flex gap-3 justify-end bg-white dark:bg-zinc-900">
               <button onClick={() => setModal(null)} className="px-5 py-2.5 rounded-xl border border-border hover:bg-muted text-sm font-semibold">Annuler</button>
               <button onClick={handleSave} className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90">Enregistrer</button>
             </div>

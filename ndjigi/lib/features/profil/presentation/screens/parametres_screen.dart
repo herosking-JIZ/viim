@@ -3,8 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../../core/theme/colors.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../shared/widgets/section_card.dart';
+
+const String _cguUrl = 'https://keycloak.ndjigi.com/terms';
+const String _privacyUrl = 'https://keycloak.ndjigi.com/privacy';
 
 class ParametresScreen extends ConsumerStatefulWidget {
   const ParametresScreen({super.key});
@@ -75,7 +79,7 @@ class _ParametresScreenState extends ConsumerState<ParametresScreen> {
           children: [
             Text(
               'Notifications',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Colors.grey.shade600),
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
             SectionCard(
@@ -90,7 +94,7 @@ class _ParametresScreenState extends ConsumerState<ParametresScreen> {
             const SizedBox(height: 32),
             Text(
               'Langue',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Colors.grey.shade600),
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
             SectionCard(
@@ -116,25 +120,25 @@ class _ParametresScreenState extends ConsumerState<ParametresScreen> {
             const SizedBox(height: 32),
             Text(
               'Légal',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Colors.grey.shade600),
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
             SectionCard(
               child: Column(
                 children: [
                   ListTile(
-                    leading: const Icon(Icons.description_outlined),
+                    leading: Icon(Icons.description_outlined, color: AppColors.info),
                     title: const Text('Conditions d\'utilisation'),
-                    trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-                    onTap: () => _launchURL('https://ndjigi.com/cgu'),
+                    trailing: Icon(Icons.chevron_right, color: AppColors.textSecondary),
+                    onTap: () => _launchURL(_cguUrl),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                   ),
                   const Divider(height: 1),
                   ListTile(
-                    leading: const Icon(Icons.privacy_tip_outlined),
+                    leading: Icon(Icons.privacy_tip_outlined, color: AppColors.info),
                     title: const Text('Politique de confidentialité'),
-                    trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-                    onTap: () => _launchURL('https://ndjigi.com/privacy'),
+                    trailing: Icon(Icons.chevron_right, color: AppColors.textSecondary),
+                    onTap: () => _launchURL(_privacyUrl),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                   ),
                 ],
@@ -143,7 +147,7 @@ class _ParametresScreenState extends ConsumerState<ParametresScreen> {
             const SizedBox(height: 32),
             Text(
               'À propos',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Colors.grey.shade600),
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
             SectionCard(
@@ -161,8 +165,8 @@ class _ParametresScreenState extends ConsumerState<ParametresScreen> {
             ElevatedButton(
               onPressed: _logout,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red.shade100,
-                foregroundColor: Colors.red,
+                backgroundColor: AppColors.error.withValues(alpha: 0.12),
+                foregroundColor: AppColors.error,
                 minimumSize: const Size.fromHeight(52),
               ),
               child: const Text('Se déconnecter'),

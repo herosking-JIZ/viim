@@ -334,9 +334,11 @@ export interface ZoneTarifaire {
   actif: boolean
 }
 
+export type NomCategorie = 'Economique' | 'Confort' | 'Premium'
+
 export interface CategorieVehicule {
   id_categorie: string
-  nom: string
+  nom: NomCategorie
   description: string
   actif: boolean
 }
@@ -508,6 +510,40 @@ export interface ExitFluxPayload {
   id_utilisateur: string
   etat_vehicule: EtatVehiculeParking
   commentaire?: string
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DEMANDES D'EXTENSION DE PROFIL
+// ═══════════════════════════════════════════════════════════════
+
+export type ExtensionType = 'chauffeur' | 'proprietaire'
+export type ExtensionStatut = 'en_attente' | 'accepte' | 'refuse'
+
+export interface DemandeExtension {
+  id_demande_extension: string
+  extension_type: ExtensionType
+  id_utilisateur: string
+  statut: ExtensionStatut
+  motif_rejet?: string | null
+  createdAt?: string
+  updatedAt?: string
+  documents?: Document[]
+  utilisateur?: {
+    id_utilisateur: string
+    nom: string
+    prenom: string
+    email: string
+    numero_telephone: string
+    photo_profil?: string | null
+    adresse?: string | null
+    date_inscription?: string
+    statut_compte?: AccountStatus
+  }
+}
+
+export interface UpdateDemandeExtensionPayload {
+  statut: 'accepte' | 'refuse'
+  motif_rejet?: string
 }
 
 

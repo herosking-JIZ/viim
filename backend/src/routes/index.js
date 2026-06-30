@@ -26,10 +26,12 @@ const contactRoute = require('./contactRoute');
 const supportRoutes = require('./supportRoute');
 const financesRoutes = require('./financesRoute');
 const faqRoute = require('./faqRoute');
+const webhookRoute = require('./webhookRoute');
 
 const zoneRoutes = require('./zoneTarifaireRoute');
 const categorieRoutes = require('./categorieVehiculeRoute');
 const tarifRoutes = require('./tarifCategorieZoneRoute');
+const demandeExtensionRoutes = require('./demandeExtension.routes');
 
 const { authenticateKeycloak } = require('../middlewares/authenticateKeycloak');
 const { authenticate } = require('../middlewares/authenticate');
@@ -43,6 +45,7 @@ const router = express.Router();
 // Enregistrées en PREMIER avant le middleware d'authentification
 router.use('/auth', keycloakAuthRoutes);
 router.use('/public', publicRoute);
+router.use('/webhook', webhookRoute);
 
 // Appliquer l'authentification (supports both Keycloak and local/JWT) à toutes les autres routes
 // Try Keycloak first, fallback to local JWT auth
@@ -91,6 +94,7 @@ router.use('/config/tarifs', tarifRoutes);
 router.use('/support/tickets', supportRoutes);
 router.use('/finances', financesRoutes);
 router.use('/faqs', faqRoute);
+router.use('/demandes-extension', demandeExtensionRoutes);
 
 
 

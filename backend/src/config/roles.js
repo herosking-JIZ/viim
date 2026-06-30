@@ -28,6 +28,8 @@ const ROLES_PERMISSIONS = {
     // Portefeuille
     'portefeuille:lire',
     'portefeuille:recharger',
+    'portefeuille:retirer',
+    'portefeuille:transferer',
     // Documents
     'document:soumettre',
     // Codes promo
@@ -58,6 +60,9 @@ const ROLES_PERMISSIONS = {
     'avis:lire',
     // Portefeuille
     'portefeuille:lire',
+    'portefeuille:recharger',
+    'portefeuille:retirer',
+    'portefeuille:transferer',
     // Documents
     'document:soumettre',
     // Incidents
@@ -89,6 +94,9 @@ const ROLES_PERMISSIONS = {
     'location:gerer',
     // Portefeuille
     'portefeuille:lire',
+    'portefeuille:recharger',
+    'portefeuille:retirer',
+    'portefeuille:transferer',
     // Documents
     'document:soumettre',
     // Avis

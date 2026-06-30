@@ -17,15 +17,9 @@ final addressesProvider = FutureProvider.autoDispose<List<Address>>((ref) async 
       queryParameters: {'page': 1, 'limit': 100},
     );
 
-    // Gérer la pagination — data peut être une liste ou un objet avec meta
     final data = response['data'];
-    if (data is List) {
-      return (data as List)
-          .map((item) => Address.fromJson(item as Map<String, dynamic>))
-          .toList();
-    } else if (data is Map && data.containsKey('data')) {
-      // Structure avec pagination
-      final items = data['data'] as List;
+    if (data is Map && data.containsKey('addresses')) {
+      final items = data['addresses'] as List;
       return items
           .map((item) => Address.fromJson(item as Map<String, dynamic>))
           .toList();
@@ -46,12 +40,8 @@ final contactsConfianceProvider = FutureProvider.autoDispose<List<ContactConfian
     );
 
     final data = response['data'];
-    if (data is List) {
-      return (data as List)
-          .map((item) => ContactConfiance.fromJson(item as Map<String, dynamic>))
-          .toList();
-    } else if (data is Map && data.containsKey('data')) {
-      final items = data['data'] as List;
+    if (data is Map && data.containsKey('contacts')) {
+      final items = data['contacts'] as List;
       return items
           .map((item) => ContactConfiance.fromJson(item as Map<String, dynamic>))
           .toList();

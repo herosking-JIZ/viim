@@ -198,6 +198,36 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  Future<LoginFlowState?> startKeycloakRegister() async {
+    try {
+      final registerData = _authRepository.startRegisterWithKeycloak();
+      final codeVerifier = registerData['codeVerifier'];
+
+      if (codeVerifier == null || codeVerifier.isEmpty) {
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: 'Erreur: code verifier manquant',
+        );
+        return null;
+      }
+
+      await _storage.saveCodeVerifier(codeVerifier);
+      print('🔵 NDJIGI-AUTH: [AUTH-PROVIDER] startKeycloakRegister: verifier SAUVEGARDÉ = ${codeVerifier.substring(0, 8)}...');
+
+      return LoginFlowState(
+        authUrl: registerData['authUrl'],
+        codeVerifier: codeVerifier,
+        state: registerData['state'],
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Erreur lors du démarrage de l\'inscription',
+      );
+      return null;
+    }
+  }
+
   Future<void> completeKeycloakLogin({
     required String code,
     String? codeVerifier,

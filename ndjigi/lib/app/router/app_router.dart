@@ -12,8 +12,9 @@ import '../../features/auth/presentation/screens/compte_suspendu_screen.dart';
 import '../../features/auth/presentation/screens/keycloak_callback_screen.dart';
 import '../../features/auth/presentation/screens/phone_collection_screen.dart';
 import '../../features/home/presentation/screens/home_passager_screen.dart';
-import '../../features/home/presentation/screens/home_chauffeur_screen.dart';
 import '../../features/home/presentation/screens/home_proprietaire_screen.dart';
+import '../../features/chauffeur/presentation/screens/chauffeur_hub_screen.dart';
+import '../../features/chauffeur/presentation/screens/chauffeur_vehicule_screen.dart';
 import '../../features/profil/presentation/screens/profil_hub_screen.dart';
 import '../../features/profil/presentation/screens/mes_informations_screen.dart';
 import '../../features/profil/presentation/screens/mes_adresses_screen.dart';
@@ -131,7 +132,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/home/chauffeur',
         name: 'home-chauffeur',
-        builder: (context, state) => const HomeChauffeurScreen(),
+        builder: (context, state) => const ChauffeurHubScreen(),
+        routes: [
+          GoRoute(
+            path: 'vehicle',
+            builder: (context, state) => const ChauffeurVehiculeScreen(),
+          ),
+        ],
       ),
       GoRoute(
         path: '/home/proprietaire',

@@ -159,10 +159,9 @@ class DemandeExtensionNotifier extends StateNotifier<DemandeExtensionState> {
   Future<void> pickFile(String documentType) async {
     try {
       // Accepte les images et les PDFs
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'gif'],
-        lockParentWindow: true,
       );
 
       if (result != null && result.files.isNotEmpty) {

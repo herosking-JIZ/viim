@@ -23,6 +23,7 @@ import Support from '@/pages/admin/Support'
 import Config from '@/pages/admin/Config'
 import Gestionnaires from '@/pages/admin/Gestionnaires'
 import CreateGestionnaire from '@/pages/admin/CreateGestionnaire'
+import Extensions from '@/pages/admin/Extensions'
 
 // Pages gestionnaire
 import ManagerDashboard from '@/pages/manager/ManagerDashboard'
@@ -190,6 +191,10 @@ function AppRoutes() {
         <Route
           path="gestionnaires/create"
           element={<ProtectedRoute adminOnly><CreateGestionnaire /></ProtectedRoute>}
+        />
+        <Route
+          path="extensions"
+          element={<ProtectedRoute adminOnly><Extensions /></ProtectedRoute>}
         />
       </Route>
 

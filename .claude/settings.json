@@ -41,7 +41,8 @@
       "Bash(Get-ChildItem -Path \"c:\\\\projet\\\\ndjigiv1\" -Recurse -Directory -Depth 2)",
       "Bash(cat)",
       "Bash(chmod +x /tmp/real-auth-test.sh)",
-      "Bash(bash /tmp/real-auth-test.sh)"
+      "Bash(bash /tmp/real-auth-test.sh)",
+      "Bash(Get-ChildItem -Path \"c:\\\\projet\\\\ndjigiv1\\\\ndjigi\\\\lib\" -Depth 2 -Directory)"
     ]
   }
 }

@@ -11,8 +11,8 @@ _$AddressImpl _$$AddressImplFromJson(Map<String, dynamic> json) =>
       idAddress: json['id_address'] as String,
       label: json['label'] as String,
       address: json['address'] as String,
-      latitude: (json['latitude'] as num).toDouble(),
-      longitude: (json['longitude'] as num).toDouble(),
+      latitude: _parseDouble(json['latitude']),
+      longitude: _parseDouble(json['longitude']),
       isfavorite: json['isfavorite'] as bool? ?? false,
       createdAt: json['createdAt'] == null
           ? null

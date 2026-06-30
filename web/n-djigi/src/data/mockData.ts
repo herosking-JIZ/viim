@@ -117,10 +117,10 @@ export let _zones: ZoneTarifaire[] = [
 ]
 
 export let _categories: CategorieVehicule[] = [
-  { id_categorie: 'c-1', nom: 'Économique', description: 'Véhicules standard', actif: true },
+  { id_categorie: 'c-1', nom: 'Economique', description: 'Véhicules standard', actif: true },
   { id_categorie: 'c-2', nom: 'Confort', description: 'Véhicules climatisés', actif: true },
-  { id_categorie: 'c-3', nom: 'SUV', description: 'Véhicules spacieux', actif: true },
-  { id_categorie: 'c-4', nom: 'Luxe', description: 'Véhicules haut de gamme', actif: true },
+  { id_categorie: 'c-3', nom: 'Confort', description: 'Véhicules spacieux', actif: true },
+  { id_categorie: 'c-4', nom: 'Premium', description: 'Véhicules haut de gamme', actif: true },
 ]
 
 export let _tarifs: TarifCategorieZone[] = [

@@ -1,23 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/providers/profile_assistance_providers.dart';
+import '../../../../core/theme/colors.dart';
 import '../../../../shared/widgets/primary_button.dart';
 import '../../../../shared/widgets/section_card.dart';
 
 class PortefeuilleScreen extends ConsumerWidget {
   const PortefeuilleScreen({super.key});
 
+  void _showComingSoon(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Bientôt disponible'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final portefeuilleAsync = ref.watch(portefeuilleProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: AppColors.surface,
       appBar: AppBar(
         title: const Text('Portefeuille'),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.background,
       ),
       body: portefeuilleAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -25,7 +35,7 @@ class PortefeuilleScreen extends ConsumerWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              Icon(Icons.error_outline, size: 48, color: AppColors.error),
               const SizedBox(height: 16),
               Text('Erreur: ${error.toString()}'),
               const SizedBox(height: 24),
@@ -45,13 +55,13 @@ class PortefeuilleScreen extends ConsumerWidget {
                   children: [
                     Text(
                       'Solde disponible',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
                     ),
                     const SizedBox(height: 12),
                     Text(
                       '${portefeuille.solde.toStringAsFixed(2)} ${portefeuille.devise}',
                       style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                            color: Colors.green,
+                            color: AppColors.success,
                             fontWeight: FontWeight.bold,
                           ),
                     ),
@@ -59,19 +69,19 @@ class PortefeuilleScreen extends ConsumerWidget {
                     if (portefeuille.detteCommission != null && portefeuille.detteCommission! > 0) ...[
                       Text(
                         'Dette commission: ${portefeuille.detteCommission!.toStringAsFixed(2)} ${portefeuille.devise}',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.orange),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.warning),
                       ),
                       const SizedBox(height: 8),
                     ],
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.12),
+                        color: AppColors.success.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Text(
                         portefeuille.statut.toUpperCase(),
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.green),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: AppColors.success),
                       ),
                     ),
                   ],
@@ -85,11 +95,11 @@ class PortefeuilleScreen extends ConsumerWidget {
               const SizedBox(height: 16),
               PrimaryButton(
                 label: 'Ajouter du crédit',
-                onPressed: () {},
+                onPressed: () => _showComingSoon(context),
               ),
               const SizedBox(height: 12),
               ElevatedButton(
-                onPressed: () {},
+                onPressed: () => _showComingSoon(context),
                 style: ElevatedButton.styleFrom(
                   minimumSize: const Size.fromHeight(52),
                 ),
@@ -97,7 +107,7 @@ class PortefeuilleScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 12),
               ElevatedButton(
-                onPressed: () {},
+                onPressed: () => _showComingSoon(context),
                 style: ElevatedButton.styleFrom(
                   minimumSize: const Size.fromHeight(52),
                 ),

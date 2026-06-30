@@ -271,6 +271,25 @@ class AuthRepository {
     };
   }
 
+  /// Démarre le flux d'inscription Keycloak PKCE
+  /// Retourne l'URL d'inscription et les valeurs PKCE
+  Map<String, String> startRegisterWithKeycloak() {
+    final codeVerifier = _generateCodeVerifier();
+    final codeChallenge = _generateCodeChallenge(codeVerifier);
+    final state = _generateRandomString(32);
+
+    final registerUrl = _keycloakService.buildRegistrationUrl(
+      codeChallenge: codeChallenge,
+      state: state,
+    );
+
+    return {
+      'authUrl': registerUrl,
+      'codeVerifier': codeVerifier,
+      'state': state,
+    };
+  }
+
   /// Complète le flux de login avec le code reçu du callback
   Future<AuthResult> completeLoginWithKeycloak({
     required String code,

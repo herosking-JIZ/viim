@@ -12,6 +12,8 @@ import type {
   Ticket,
   // Gestionnaire (Phase 1+)
   CreateGestionnairePayload, GestionnaireCreationResponse, InvitationVerifyResponse, FirstConnectionCompleteResponse, InvitationResendResponse, DocumentUploadResponse, FirstConnectionPayload,
+  // Demandes d'extension
+  DemandeExtension, UpdateDemandeExtensionPayload,
 } from '@/types'
 import * as mock from '@/data/mockData'
 import { STORAGE_KEY_ACCESS, STORAGE_KEY_REFRESH } from '@/contexts/AuthContext'
@@ -836,5 +838,58 @@ export const dashboardService = {
   topChauffeurs: async (): Promise<TopChauffeur[]> => {
     if (IS_DEMO) { await delay(); return mock.MOCK_TOP_CHAUFFEURS }
     const { data } = await api.get<ApiResponse<TopChauffeur[]>>('/dashboard/top-chauffeurs'); return extractData(data)
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DEMANDES D'EXTENSION DE PROFIL
+// ═══════════════════════════════════════════════════════════════
+export const demandeExtensionService = {
+  list: async (params?: {
+    page?: number; limit?: number; statut?: string; extension_type?: string
+  }): Promise<PaginatedResponse<DemandeExtension>> => {
+    if (IS_DEMO) {
+      await delay()
+      // Retourner data en mode démo
+      return {
+        data: [],
+        total: 0,
+        page: 1,
+        limit: 20,
+        totalPages: 0,
+      }
+    }
+    const { data } = await api.get<ApiResponse<{
+      demandes: DemandeExtension[];
+      total: number;
+      pages: number;
+    }>>('/demandes-extension/admin', { params })
+
+    const { demandes, total, pages } = extractData(data)
+    return {
+      data: demandes,
+      total,
+      page: params?.page ?? 1,
+      limit: params?.limit ?? 20,
+      totalPages: pages,
+    }
+  },
+
+  getById: async (id: string): Promise<DemandeExtension> => {
+    if (IS_DEMO) { await delay(); return {} as DemandeExtension }
+    const { data } = await api.get<ApiResponse<DemandeExtension>>(`/demandes-extension/${id}`)
+    return extractData(data)
+  },
+
+  getMesDemandes: async (): Promise<DemandeExtension[]> => {
+    if (IS_DEMO) { await delay(); return [] }
+    const { data } = await api.get<ApiResponse<DemandeExtension[]>>('/demandes-extension/mes-demandes')
+    return extractData(data)
+  },
+
+  updateStatut: async (id: string, payload: UpdateDemandeExtensionPayload): Promise<DemandeExtension> => {
+    if (IS_DEMO) { await delay(); return {} as DemandeExtension }
+    const { data } = await api.patch<ApiResponse<DemandeExtension>>(`/demandes-extension/${id}/statut`, payload)
+    return extractData(data)
   },
 }

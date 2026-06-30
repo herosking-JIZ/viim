@@ -36,13 +36,16 @@ services:
       KC_HOSTNAME_STRICT: false
       KC_PROXY_HEADERS: xforwarded
       KC_HTTP_ENABLED: true
+      KC_FEATURES: declarative-ui
+
     ports:
       - "8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
-      - ./docker/keycloak/themes:/opt/keycloak/themes
+      - ./backend/keycloak/themes/ndjigi:/opt/keycloak/themes/ndjigi
+
     networks:
       - ndjigi-network
     command:

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/text_styles.dart';
 
-/// Champ texte stylisé : label flottant, corners 8, validation inline
-class AppTextField extends StatefulWidget {
+/// Champ texte stylisé : label flottant, corners 8, validation Form native
+class AppTextField extends StatelessWidget {
   final String label;
   final String? initialValue;
   final TextEditingController? controller;
@@ -11,6 +11,7 @@ class AppTextField extends StatefulWidget {
   final TextInputType keyboardType;
   final int? maxLines;
   final int minLines;
+  final Function(String)? onChanged;
 
   const AppTextField({
     required this.label,
@@ -21,57 +22,29 @@ class AppTextField extends StatefulWidget {
     this.keyboardType = TextInputType.text,
     this.maxLines = 1,
     this.minLines = 1,
+    this.onChanged,
     super.key,
   });
 
   @override
-  State<AppTextField> createState() => _AppTextFieldState();
-}
-
-class _AppTextFieldState extends State<AppTextField> {
-  String? _errorText;
-
-  void _validate() {
-    final controller = widget.controller;
-    final value = controller?.text ?? widget.initialValue ?? '';
-    setState(() {
-      _errorText = widget.validator?.call(value);
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        TextFormField(
-          controller: widget.controller,
-          initialValue: widget.initialValue,
-          decoration: InputDecoration(
-            labelText: widget.label,
-            prefixIcon: widget.prefixIcon != null ? Icon(widget.prefixIcon) : null,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          ),
-          keyboardType: widget.keyboardType,
-          maxLines: widget.maxLines,
-          minLines: widget.minLines,
-          onChanged: (_) {
-            if (_errorText != null) _validate();
-          },
-          onEditingComplete: _validate,
-          style: AppTextStyles.bodyMedium,
+    return TextFormField(
+      controller: controller,
+      initialValue: initialValue,
+      validator: validator,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: prefixIcon != null ? Icon(prefixIcon) : null,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
         ),
-        if (_errorText != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            _errorText!,
-            style: AppTextStyles.bodySmall.copyWith(color: Colors.red),
-          ),
-        ],
-      ],
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      ),
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      minLines: minLines,
+      onChanged: onChanged,
+      style: AppTextStyles.bodyMedium,
     );
   }
 }

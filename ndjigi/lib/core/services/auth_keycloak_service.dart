@@ -62,6 +62,29 @@ class KeycloakAuthService {
     return '${_config.keycloakAuthEndpoint}?$queryString';
   }
 
+  /// Construit l'URL d'inscription Keycloak avec PKCE (même mécanisme que buildAuthorizationUrl)
+  String buildRegistrationUrl({
+    required String codeChallenge,
+    required String state,
+  }) {
+    final params = {
+      'client_id': _config.keycloakClientId,
+      'response_type': 'code',
+      'redirect_uri': _config.redirectUri,
+      'scope': 'openid profile email phone',
+      'state': state,
+      'code_challenge': codeChallenge,
+      'code_challenge_method': 'S256',
+    };
+
+    final queryString = params.entries
+        .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+        .join('&');
+
+    final registrationEndpoint = '${_config.keycloakUrl}/realms/${_config.keycloakRealm}/protocol/openid-connect/registrations';
+    return '$registrationEndpoint?$queryString';
+  }
+
   /// Échange le code authorization contre les tokens
   Future<KeycloakAuthResult> exchangeCodeForTokens({
     required String code,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/providers/app_providers.dart';
+import '../../../../core/theme/colors.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../shared/widgets/app_text_field.dart';
 import '../../../../shared/widgets/primary_button.dart';
@@ -15,6 +16,8 @@ class MesInformationsScreen extends ConsumerStatefulWidget {
 }
 
 class _MesInformationsScreenState extends ConsumerState<MesInformationsScreen> {
+  final _formKey = GlobalKey<FormState>();
+
   late TextEditingController _prenomController;
   late TextEditingController _nomController;
   late TextEditingController _telephoneController;
@@ -43,6 +46,8 @@ class _MesInformationsScreenState extends ConsumerState<MesInformationsScreen> {
   }
 
   Future<void> _saveChanges() async {
+    if (!_formKey.currentState!.validate()) return;
+
     if (!mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
@@ -65,9 +70,9 @@ class _MesInformationsScreenState extends ConsumerState<MesInformationsScreen> {
       if (!mounted) return;
 
       messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Informations mises à jour'),
-          backgroundColor: Colors.green,
+        SnackBar(
+          content: const Text('Informations mises à jour'),
+          backgroundColor: AppColors.success,
         ),
       );
 
@@ -79,7 +84,7 @@ class _MesInformationsScreenState extends ConsumerState<MesInformationsScreen> {
       messenger.showSnackBar(
         SnackBar(
           content: Text('Erreur: ${e.toString()}'),
-          backgroundColor: Colors.red,
+          backgroundColor: AppColors.error,
         ),
       );
     } finally {
@@ -95,12 +100,12 @@ class _MesInformationsScreenState extends ConsumerState<MesInformationsScreen> {
     final user = authState.user;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: AppColors.surface,
       appBar: AppBar(
         title: const Text('Mes informations'),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.background,
       ),
       body: user == null
           ? const Center(child: CircularProgressIndicator())
@@ -109,43 +114,56 @@ class _MesInformationsScreenState extends ConsumerState<MesInformationsScreen> {
               child: Column(
                 children: [
                   SectionCard(
-                    child: Column(
-                      children: [
-                        AppTextField(
-                          label: 'Prénom',
-                          controller: _prenomController,
-                          prefixIcon: Icons.person_outline,
-                        ),
-                        const SizedBox(height: 16),
-                        AppTextField(
-                          label: 'Nom',
-                          controller: _nomController,
-                          prefixIcon: Icons.person_outline,
-                        ),
-                        const SizedBox(height: 16),
-                        AppTextField(
-                          label: 'Téléphone',
-                          controller: _telephoneController,
-                          prefixIcon: Icons.phone_outlined,
-                          keyboardType: TextInputType.phone,
-                        ),
-                        const SizedBox(height: 16),
-                        AppTextField(
-                          label: 'Email',
-                          initialValue: user.email,
-                          prefixIcon: Icons.email_outlined,
-                          keyboardType: TextInputType.emailAddress,
-                          validator: (value) {
-                            if (value?.isEmpty ?? true) {
-                              return 'Email requis';
-                            }
-                            if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value!)) {
-                              return 'Email invalide';
-                            }
-                            return null;
-                          },
-                        ),
-                      ],
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        children: [
+                          AppTextField(
+                            label: 'Prénom',
+                            controller: _prenomController,
+                            prefixIcon: Icons.person_outline,
+                            validator: (value) {
+                              if (value?.isEmpty ?? true) return 'Prénom requis';
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          AppTextField(
+                            label: 'Nom',
+                            controller: _nomController,
+                            prefixIcon: Icons.person_outline,
+                            validator: (value) {
+                              if (value?.isEmpty ?? true) return 'Nom requis';
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          AppTextField(
+                            label: 'Téléphone',
+                            controller: _telephoneController,
+                            prefixIcon: Icons.phone_outlined,
+                            keyboardType: TextInputType.phone,
+                            validator: (value) {
+                              if (value?.isEmpty ?? true) return 'Téléphone requis';
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          AppTextField(
+                            label: 'Email',
+                            initialValue: user.email,
+                            prefixIcon: Icons.email_outlined,
+                            keyboardType: TextInputType.emailAddress,
+                            validator: (value) {
+                              if (value?.isEmpty ?? true) return 'Email requis';
+                              if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value!)) {
+                                return 'Email invalide';
+                              }
+                              return null;
+                            },
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 32),
